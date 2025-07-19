@@ -1,4 +1,3 @@
-# BetterAltTab_Unnamed10110
 
 A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. Designed for power users who want a beautiful, fast, and feature-rich window switcher with persistent Z-order, pinning, search/filter, and more.
 
@@ -18,6 +17,18 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 - **OLED Black Theme**: Overlay and popups use a true black background for perfect OLED displays.
 - **Minimal Dependencies**: Pure Win32 API, no Qt/.NET/third-party frameworks.
 - **Super Fast**: Instant overlay, no lag, optimized for large numbers of windows.
+
+---
+## Demostration
+- Dynamic Mode (Classic Mode)
+  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/04c8c545-55e2-4e63-b75d-eb8fc92b1970" />
+- Z-order Persistence Mode:
+-  You can pin multiple windows at the beginning and order then, also it mantains the z-order, independently from the process explorer.exe crashing or not.
+  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/a6f18638-2851-4243-b41b-93dd0c2c8e3a" />
+- You can pin as many as you want, they always keep they position unless you changed, you can temrinate them, and give then a pinned gerarquy order:
+- You also have the option to use shortcuts to acceso to the most importants windows pinned as important with jus the number in the window position
+  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/23789cc3-7a79-4c8c-a394-902621cb7a9e" />
+
 
 ---
 
@@ -90,30 +101,11 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 - **Portable**: Single EXE, no installer needed
 - **Open Source**: Easily hackable and extensible
 
----
-
-## 🖼️ Modern Overlay Mockup
-
-```mermaid
-flowchart TD
-    subgraph Overlay[BetterAltTab_Unnamed10110 Overlay]
-        direction LR
-        T1["<b>1</b>\n[Icon]\nWindow Title\n[Pin] [#] [X]"]
-        T2["<b>2</b>\n[Icon]\nWindow Title\n[Pin] [#] [X]"]
-        T3["<b>3</b>\n[Icon]\nWindow Title\n[Pin] [#] [X]"]
-        T4["..."]
-    end
-    style Overlay fill:#111,stroke:#00FF44,stroke-width:2px,color:#fff
-    style T1 fill:#222,stroke:#50b4ff,stroke-width:2px
-    style T2 fill:#222,stroke:#50b4ff,stroke-width:2px
-    style T3 fill:#222,stroke:#50b4ff,stroke-width:2px
-    style T4 fill:#222,stroke:#888,stroke-width:1px
-```
 
 ---
 
 ## 📝 License
-MIT (or your preferred license)
+MIT 
 
 ---
 
