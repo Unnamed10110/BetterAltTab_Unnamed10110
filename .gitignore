@@ -1,0 +1,60 @@
+# Build directories
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.dir/
+
+# Visual Studio
+*.sln
+*.vcxproj*
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.ipch
+*.tlog
+*.log
+*.obj
+*.pdb
+*.idb
+*.ilk
+*.aps
+*.ncb
+*.suo
+*.cache
+*.db
+*.opendb
+*.VC.db
+*.VC.opendb
+*.vscode/
+
+# Executables and libraries
+*.exe
+*.dll
+*.lib
+*.exp
+*.app
+*.out
+*.so
+*.a
+*.o
+*.dylib
+*.dSYM/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+*.swp
+*~
+*.bak
+*.tmp
+*.log
+
+# Project-specific
+/grid_order.bin
+debug_log.txt 
