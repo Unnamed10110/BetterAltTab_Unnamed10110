@@ -20,6 +20,13 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 
 ---
 ## Demostration
+```
+# Quick commented guide:
+- Press atl+q to open the overlay, with F2 you can change between dynamic mode and persistence z-order mode (you will notice the difference on the button right to the thumbnails)
+- When cycling with alt+q, and you decide what window focus, just press again tab and it will focus that window.
+- Ctrl+Numpaddot has the same behavior as alt+tab (alt+q is an upgrade behavior)
+```
+
 - Dynamic Mode (Classic Mode)
   <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/04c8c545-55e2-4e63-b75d-eb8fc92b1970" />
 - Z-order Persistence Mode:
