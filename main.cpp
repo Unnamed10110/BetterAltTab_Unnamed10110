@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <shellapi.h> // Para ícono de bandeja
 #include <shlwapi.h>
+#include <objbase.h>
 #pragma comment(lib, "Shlwapi.lib")
 
 #pragma comment(lib, "dwmapi.lib")
@@ -26,14 +27,23 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "psapi.lib")
 
+// ===============================
+// Definiciones y constantes globales
+// ===============================
+
+// Paso 1: Definimos los valores que vamos a usar para la grilla y la superposición.
+// Esto nos permite cambiar el diseño fácilmente más adelante.
+
 #define HOTKEY_ID 0xBEEF
 #define HOTKEY_ID_ALTQ 0xBEEE
 #define GRID_ORDER_FILE L"grid_order.bin"
 
-const int GRID_COLS = 4;
-// Agrega relleno para que las miniaturas no toquen los bordes
-const int GRID_PADDING_X = 48;
-const int GRID_PADDING_Y = 48;
+// Paso 2: Configuramos los márgenes, tamaños y colores de la UI.
+// Así logramos una apariencia moderna y cómoda para el usuario.
+
+const int GRID_COLS = 4; // Columnas de la grilla (no se usa, ver FIXED_COLS)
+const int GRID_PADDING_X = 48; // Margen horizontal
+const int GRID_PADDING_Y = 48; // Margen vertical
 // Aumenta el tamaño de la superposición
 const int OVERLAY_WIDTH = 1692; // 1880 * 0.9
 const int OVERLAY_HEIGHT = 1000;
@@ -57,7 +67,13 @@ const int FIXED_COLS = 5;
 const int PIN_CLOSE_VERTICAL_GAP = 12; // Espacio vertical entre el botón de pin y el de cerrar
 const int PIN_TO_POS_BUTTON_SIZE = 26; // Tamaño del botón para fijar a posición
 
-// Variables globales para el manejo de scroll y selección
+// ===============================
+// Variables globales para el manejo de estado
+// ===============================
+
+// Paso 3: Declaramos variables globales para manejar el scroll, la selección y el estado de la UI.
+// Esto nos permite mantener el contexto entre eventos de usuario.
+
 static int g_scrollX = 0;
 static int g_scrollMax = 0;
 static bool g_scrolling = false;
@@ -83,7 +99,13 @@ static int g_lastHotkey = 0; // 0 = ninguno, 1 = ctrl+numpaddot, 2 = alt+q
 int g_overlayWidth = OVERLAY_WIDTH;
 int g_overlayHeight = OVERLAY_HEIGHT;
 
-// Estructura que representa la información de cada ventana mostrada en la grilla
+// ===============================
+// Estructuras para representar ventanas y persistencia
+// ===============================
+
+// Paso 4: Creamos una estructura para guardar la información de cada ventana.
+// Esto facilita el manejo de la grilla y la persistencia del estado.
+
 struct WindowInfo {
     HWND hwnd; // Handle de la ventana
     std::wstring title; // Título de la ventana
@@ -92,7 +114,9 @@ struct WindowInfo {
     bool pinned = false; // Si está fijada en la grilla
 };
 
-// Estructura para persistir el orden y estado de las ventanas
+// Paso 5: Estructura para guardar el orden y estado de las ventanas en disco.
+// Así el usuario no pierde su configuración al reiniciar.
+
 struct PersistedWindow {
     HWND hwnd;
     wchar_t title[256];
@@ -100,32 +124,26 @@ struct PersistedWindow {
     bool pinned = false;
 };
 
-// Vector global de ventanas activas
+// ===============================
+// Vectores y mapas globales
+// ===============================
+
+// Paso 6: Usamos vectores y mapas para manejar las ventanas activas y las miniaturas.
+// Esto nos permite acceder rápido a la información y actualizar la UI eficientemente.
+
 std::vector<WindowInfo> g_windows;
-// Mapa de miniaturas registradas por HWND
 std::map<HWND, HTHUMBNAIL> g_thumbnailMap;
-// Orden persistente de la grilla
 std::vector<PersistedWindow> g_gridOrder;
-// Tooltip de ayuda (no implementado)
 HWND g_tooltip = nullptr;
-// Interfaz para manejar escritorios virtuales
 IVirtualDesktopManager* g_vdm = nullptr;
-// Modo de orden dinámico o persistente
 bool g_dynamicOrder = false;
 
-// Mutex para escritura de logs (debug)
-std::mutex g_logMutex;
-// Escribe mensajes de depuración en un archivo
-void LogDebugMessage(const wchar_t* msg) {
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    std::wofstream logFile(L"debug_log.txt", std::ios::app);
-    if (logFile.is_open()) {
-        logFile << msg;
-        logFile.flush();
-    }
-}
+// ===============================
+// Funciones principales
+// ===============================
 
-// Prototipos de funciones principales
+// Paso 7: Prototipos de funciones para organizar el código y evitar errores de compilación.
+
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd);
 void RegisterThumbnails(HWND host, std::vector<WindowInfo>& windows);
@@ -137,6 +155,7 @@ void DrawWindowIcon(HDC hdc, HWND hwnd, int x, int y, int size);
 void DrawTextWithShadow(HDC hdc, LPCWSTR text, RECT* rc, COLORREF color, int glowSize);
 void CenterOverlayWindow(HWND hwnd, int width, int height);
 void InvalidateGrid(HWND hwnd);
+void UnregisterAllThumbnails();
 
 // Cambia el Z-order de las ventanas según el orden de la grilla
 void SetWindowsZOrder(const std::vector<WindowInfo>& windows) {
@@ -144,13 +163,8 @@ void SetWindowsZOrder(const std::vector<WindowInfo>& windows) {
     for (int i = (int)windows.size() - 1; i >= 0; --i) {
         HWND hwnd = windows[i].hwnd;
         BOOL res = SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        wchar_t buf[512];
-        StringCchPrintfW(buf, 512, L"[ZORDER] SetWindowPos: %s (0x%p) to HWND_TOP: %d, err=%lu\n", windows[i].title.c_str(), hwnd, res, GetLastError());
-        LogDebugMessage(buf);
-        if (!res) {
-            StringCchPrintfW(buf, 512, L"[ZORDER] ERROR: No se pudo establecer el Z-order para %s (0x%p)\n", windows[i].title.c_str(), hwnd);
-            LogDebugMessage(buf);
-        }
+        // Si falla, simplemente ignoramos el error (ya no hay logging)
+        (void)res; // Evitar warning de variable no usada si se compila en release
     }
 }
 
@@ -207,6 +221,7 @@ void UnregisterThumbnails(std::vector<WindowInfo>& windows) {
             win.thumbnail = nullptr;
         }
     }
+    g_thumbnailMap.clear();
 }
 
 // Guarda el orden y estado de las ventanas en un archivo binario
@@ -353,16 +368,7 @@ void RegisterVisibleThumbnails(HWND host, std::vector<WindowInfo>& windows, cons
 
 // Imprime el orden de las ventanas en el log para depuración
 void DebugOrder(const std::vector<WindowInfo>& windows, int dragIdx, int hoverIdx, int insertIdx) {
-    wchar_t buf[1024] = {0};
-    StringCchPrintfW(buf, 1024, L"[DEBUG] Drag: %d, Hover: %d, Insert: %d\n", dragIdx, hoverIdx, insertIdx);
-    LogDebugMessage(buf);
-    StringCchCopyW(buf, 1024, L"[DEBUG] Order: ");
-    for (size_t i = 0; i < windows.size(); ++i) {
-        StringCchCatW(buf, 1024, windows[i].title.c_str());
-        StringCchCatW(buf, 1024, L" | ");
-    }
-    StringCchCatW(buf, 1024, L"\n");
-    LogDebugMessage(buf);
+    // (Eliminado: logging de depuración innecesario)
 }
 
 // Dibuja un ícono de pin simple en la esquina superior derecha de una celda
@@ -522,7 +528,7 @@ int ShowNumberInputDialog(HWND parent, const wchar_t* prompt) {
     wc.lpszClassName = L"NumInputDlgClass";
     wc.hbrBackground = CreateSolidBrush(RGB(0,0,0));
     RegisterClassW(&wc);
-    HWND hDialog = CreateWindowExW(WS_EX_DLGMODALFRAME, wc.lpszClassName, L"Pin a posición",
+    HWND hDialog = CreateWindowExW(WS_EX_DLGMODALFRAME, wc.lpszClassName, L"Pin a position",
         WS_POPUP | WS_VISIBLE | WS_SYSMENU,
         (GetSystemMetrics(SM_CXSCREEN)-220)/2, (GetSystemMetrics(SM_CYSCREEN)-110)/2, 220, 120, parent, nullptr, wc.hInstance, (LPVOID)prompt);
     SetWindowLongPtrW(hDialog, GWLP_USERDATA, 0);
@@ -572,14 +578,14 @@ HICON CreateRedSquareIcon() {
     return hIcon;
 }
 
-// Registers the program as a scheduled task to run as admin on login
+// registrar programa como tarea programada para ejecutar como admin en inicio de sesion
 void RegisterRunAsAdminOnLogin() {
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
     std::string taskName = "BetterAltTab_RunAsAdmin";
     std::string checkCmd = "schtasks /Query /TN \"" + taskName + "\" >nul 2>&1";
     if (system(checkCmd.c_str()) == 0) {
-        return; // Task already exists
+        return; // la tarea ya existe
     }
     std::string cmd = "schtasks /Create /F /RL HIGHEST /SC ONLOGON /TN \"" + taskName +
                       "\" /TR \"\\\"" + exePath + "\\\"\"";
@@ -588,6 +594,72 @@ void RegisterRunAsAdminOnLogin() {
         MessageBoxA(NULL, "Failed to create scheduled task for auto-run as admin.", "Error", MB_OK | MB_ICONERROR);
     }
 }
+
+#ifndef __IServiceProvider_INTERFACE_DEFINED__
+#define __IServiceProvider_INTERFACE_DEFINED__
+EXTERN_C const IID IID_IServiceProvider;
+MIDL_INTERFACE("6d5140c1-7436-11ce-8034-00aa006009fa")
+IServiceProvider : public IUnknown
+{
+public:
+    virtual HRESULT STDMETHODCALLTYPE QueryService(
+        /* [in] */ REFGUID guidService,
+        /* [in] */ REFIID riid,
+        /* [out] */ void **ppvObject) = 0;
+};
+#endif
+
+const CLSID CLSID_ImmersiveShell = {0xC2F03A33, 0x21F5, 0x47FA, {0xB4, 0xBB, 0x15, 0x63, 0x62, 0xA2, 0xF2, 0x39}};
+
+// Add IVirtualDesktopNotification and NotificationService definitions
+const CLSID CLSID_VirtualDesktopNotificationService = {0x0CD45E71, 0xD927, 0x4F15, {0x8B, 0x0A, 0x8F, 0xEF, 0x52, 0x53, 0x37, 0xBF}};
+const IID IID_IVirtualDesktopNotification = {0xC179334C, 0x4295, 0x40D3, {0xBE, 0xA1, 0xC6, 0x54, 0xD9, 0x65, 0x60, 0x5A}};
+const IID IID_IVirtualDesktopNotificationService = {0x0CD45E71, 0xD927, 0x4F15, {0x8B, 0x0A, 0x8F, 0xEF, 0x52, 0x53, 0x37, 0xBF}};
+
+// Custom message for desktop change
+#define WM_VIRTUAL_DESKTOP_CHANGED (WM_USER + 200)
+
+// Forward declaration for hwnd
+HWND g_mainHwnd = nullptr;
+
+// Notification implementation
+struct IVirtualDesktopNotification : public IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE VirtualDesktopCreated(void*) { return S_OK; }
+    virtual HRESULT STDMETHODCALLTYPE VirtualDesktopDestroyBegin(void*, void*) { return S_OK; }
+    virtual HRESULT STDMETHODCALLTYPE VirtualDesktopDestroyFailed(void*, void*) { return S_OK; }
+    virtual HRESULT STDMETHODCALLTYPE VirtualDesktopDestroyed(void*, void*) { return S_OK; }
+    virtual HRESULT STDMETHODCALLTYPE ViewVirtualDesktopChanged(void*) { return S_OK; }
+    virtual HRESULT STDMETHODCALLTYPE CurrentVirtualDesktopChanged(void* pDesktopOld, void* pDesktopNew) = 0;
+};
+
+struct IVirtualDesktopNotificationService : public IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE Register(IVirtualDesktopNotification* pNotification, DWORD* pdwCookie) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Unregister(DWORD dwCookie) = 0;
+};
+
+class VirtualDesktopNotificationImpl : public IVirtualDesktopNotification {
+    LONG m_refCount = 1;
+public:
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&m_refCount); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG res = InterlockedDecrement(&m_refCount);
+        if (res == 0) delete this;
+        return res;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override {
+        if (riid == IID_IUnknown || riid == IID_IVirtualDesktopNotification) {
+            *ppvObject = static_cast<IVirtualDesktopNotification*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
+    }
+    HRESULT STDMETHODCALLTYPE CurrentVirtualDesktopChanged(void* /*pDesktopOld*/, void* /*pDesktopNew*/) override {
+        if (g_mainHwnd) PostMessageW(g_mainHwnd, WM_VIRTUAL_DESKTOP_CHANGED, 0, 0);
+        return S_OK;
+    }
+};
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     RegisterRunAsAdminOnLogin();
@@ -621,6 +693,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         nullptr, nullptr, hInstance, nullptr);
     
     if (!hwnd) return 0;
+    g_mainHwnd = hwnd; // Store for notification
     // Establece una región redondeada para la ventana de superposición
     HRGN rgn = CreateRoundRectRgn(0, 0, g_overlayWidth, g_overlayHeight, 60, 60);
     SetWindowRgn(hwnd, rgn, FALSE);
@@ -641,6 +714,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     lstrcpyW(nid.szTip, L"BetterAltTab_Unnamed10110");
     Shell_NotifyIcon(NIM_ADD, &nid);
     
+    // Register IVirtualDesktopNotification (correct way)
+    IServiceProvider* pServiceProvider = nullptr;
+    IVirtualDesktopNotificationService* pNotificationService = nullptr;
+    VirtualDesktopNotificationImpl* pNotification = nullptr;
+    DWORD notificationCookie = 0;
+    HRESULT hrSP = CoCreateInstance(CLSID_ImmersiveShell, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&pServiceProvider));
+    if (SUCCEEDED(hrSP) && pServiceProvider) {
+        HRESULT hrVS = pServiceProvider->QueryService(CLSID_VirtualDesktopNotificationService, IID_IVirtualDesktopNotificationService, (void**)&pNotificationService);
+        if (SUCCEEDED(hrVS) && pNotificationService) {
+            pNotification = new VirtualDesktopNotificationImpl();
+            if (SUCCEEDED(pNotificationService->Register(pNotification, &notificationCookie))) {
+                // Registered successfully
+            } else {
+                delete pNotification;
+                pNotification = nullptr;
+            }
+        }
+        pServiceProvider->Release();
+    }
+    
     MSG msg = {};
     while (GetMessage(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
@@ -653,6 +746,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     UnregisterHotKey(hwnd, HOTKEY_ID_ALTQ);
     Shell_NotifyIcon(NIM_DELETE, &nid);
     if (hIcon) DestroyIcon(hIcon);
+    // Cleanup notification
+    if (pNotificationService && notificationCookie)
+        pNotificationService->Unregister(notificationCookie);
+    if (pNotificationService)
+        pNotificationService->Release();
+    if (pNotification)
+        pNotification->Release();
     return 0;
 }
 
@@ -702,6 +802,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     g_selectedIndex = 0;
                     g_hoverIndex = 0;
                     SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]");
+                    // Refrescar miniaturas cada vez que se muestra la superposición
+                    UnregisterAllThumbnails();
+                    g_windows = EnumerateWindows(hwnd);
+                    RegisterThumbnails(hwnd, g_windows);
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
                     g_lastHotkey = (wParam == HOTKEY_ID) ? 1 : 2;
@@ -1352,9 +1456,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_KILLFOCUS:
             ShowWindow(hwnd, SW_HIDE);
             return 0;
+        case WM_VIRTUAL_DESKTOP_CHANGED:
+            // Reload window list and UI, but do NOT reload persistent data
+            InvalidateGrid(hwnd);
+            break;
             
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
     }
     return 0;
+}
+
+// Desregistrar todas las miniaturas de todas las ventanas (no solo las actuales)
+void UnregisterAllThumbnails() {
+    for (auto& pair : g_thumbnailMap) {
+        if (pair.second) {
+            DwmUnregisterThumbnail(pair.second);
+        }
+    }
+    g_thumbnailMap.clear(); // Limpiar el mapa de miniaturas
+}
+
+// ===============================
+// Logging para depuración
+// ===============================
+// Mutex para escritura de logs (debug)
+std::mutex g_logMutex;
+// Escribe mensajes de depuración en un archivo
+void LogDebugMessage(const wchar_t* msg) {
+    std::lock_guard<std::mutex> lock(g_logMutex);
+    std::wofstream logFile(L"debug_log.txt", std::ios::app);
+    if (logFile.is_open()) {
+        logFile << msg;
+        logFile.flush();
+    }
 }
