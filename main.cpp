@@ -17,6 +17,8 @@
 #include <mutex>
 #include <algorithm>
 #include <shellapi.h> // Para ícono de bandeja
+#include <shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -570,7 +572,25 @@ HICON CreateRedSquareIcon() {
     return hIcon;
 }
 
+// Registers the program as a scheduled task to run as admin on login
+void RegisterRunAsAdminOnLogin() {
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(NULL, exePath, MAX_PATH);
+    std::string taskName = "BetterAltTab_RunAsAdmin";
+    std::string checkCmd = "schtasks /Query /TN \"" + taskName + "\" >nul 2>&1";
+    if (system(checkCmd.c_str()) == 0) {
+        return; // Task already exists
+    }
+    std::string cmd = "schtasks /Create /F /RL HIGHEST /SC ONLOGON /TN \"" + taskName +
+                      "\" /TR \"\\\"" + exePath + "\\\"\"";
+    int result = system(cmd.c_str());
+    if (result != 0) {
+        MessageBoxA(NULL, "Failed to create scheduled task for auto-run as admin.", "Error", MB_OK | MB_ICONERROR);
+    }
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+    RegisterRunAsAdminOnLogin();
     const wchar_t CLASS_NAME[] = L"BetterAltTab_Unnamed10110Class";
     
     WNDCLASSEX wc = { sizeof(WNDCLASSEX) };
