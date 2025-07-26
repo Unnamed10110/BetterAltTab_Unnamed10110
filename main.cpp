@@ -61,15 +61,28 @@
 #define HOTKEY_ID_ALTQ 0xBEEE // Otro ID para el atajo Alt+Q.
 #define GRID_ORDER_FILE L"grid_order.bin" // Archivo donde guardamos el orden de las ventanas.
 
+#define ID_TRAY_SETTINGS 2004
+#define IDC_COLUMNS_LABEL 3001
+#define IDC_COLUMNS_EDIT 3002
+#define IDC_APPLY_BUTTON 3003
+
 // Acá configuramos cómo se ve la interfaz: márgenes, tamaños, colores, etc.
 const int GRID_COLS = 4; // Cuántas columnas tiene la grilla (no se usa, ver FIXED_COLS más abajo).
 const int GRID_PADDING_X = 48; // Espacio a los costados de la grilla.
 const int GRID_PADDING_Y = 48; // Espacio arriba y abajo de la grilla.
 const int OVERLAY_WIDTH = 1692; // Ancho de la superposición (el overlay), casi toda la pantalla.
 const int OVERLAY_HEIGHT = 1000; // Alto del overlay.
-const int PREVIEW_WIDTH = 299; // Ancho de cada miniatura de ventana.
-const int PREVIEW_HEIGHT = 207; // Alto de cada miniatura.
 const int PREVIEW_MARGIN = 32; // Espacio entre miniaturas.
+// ---------- Dynamic thumbnail sizing support ----------
+const int BASE_PREVIEW_WIDTH = 299;
+const int BASE_PREVIEW_HEIGHT = 207;
+#ifndef PREVIEW_WIDTH
+#define PREVIEW_WIDTH BASE_PREVIEW_WIDTH
+#define PREVIEW_HEIGHT BASE_PREVIEW_HEIGHT
+#endif
+extern int g_previewW;
+extern int g_previewH;
+void UpdatePreviewSize();
 const COLORREF OVERLAY_BG_COLOR = RGB(0, 0, 0); // Fondo negro, bien oscuro.
 const BYTE OVERLAY_BG_ALPHA = 230; // Transparencia del overlay (0 = invisible, 255 = opaco).
 const COLORREF BORDER_COLOR = RGB(32, 32, 48); // Color del borde de las miniaturas.
@@ -82,6 +95,23 @@ const int SCROLLBAR_HEIGHT = 12; // Alto de la barra de scroll (invisible, pero 
 const int FIXED_COLS = 5; // Siempre mostramos 5 columnas, así queda prolijo.
 const int PIN_CLOSE_VERTICAL_GAP = 12; // Espacio entre el pin y el botón de cerrar.
 const int PIN_TO_POS_BUTTON_SIZE = 26; // Tamaño del botón para fijar a una posición.
+
+// Añadimos variables configurables cargadas desde INI
+int g_fixedCols = 5;               // columnas visibles
+BYTE g_overlayAlpha = 230;         // opacidad del overlay
+
+void LoadConfiguration()
+{
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+
+    // Sección general
+    g_fixedCols = GetPrivateProfileIntW(L"General", L"Columns", g_fixedCols, exePath);
+    int alpha   = GetPrivateProfileIntW(L"General", L"OverlayAlpha", g_overlayAlpha, exePath);
+    g_overlayAlpha = (BYTE)max(0, min(alpha, 255));
+}
 
 // ===============================
 // Variables globales para el manejo de estado
@@ -183,9 +213,10 @@ void DrawTextWithShadow(HDC hdc, LPCWSTR text, RECT* rc, COLORREF color, int glo
 void CenterOverlayWindow(HWND hwnd, int width, int height); // Centra la ventana del overlay en la pantalla.
 void InvalidateGrid(HWND hwnd); // Le dice a Windows que redibuje la grilla.
 void UnregisterAllThumbnails(); // Borra todas las miniaturas de una vez.
+void ShowSettingsDialog(HWND parent); // <-- Forward declaration
 
 // Esta función cambia el orden de las ventanas en la pantalla (Z-order).
-// Es como cuando ponés una hoja arriba de otra: la que está arriba se ve primero.
+// Es como when you put one sheet on top of another: the one on top is seen first.
 void SetWindowsZOrder(const std::vector<WindowInfo>& windows) {
     // Recorremos las ventanas de atrás hacia adelante para que queden en el orden correcto.
     // Es como apilar cartas: la última que ponés queda arriba.
@@ -647,6 +678,7 @@ int ShowNumberInputDialog(HWND parent, const wchar_t* prompt) {
 #define ID_TRAY_SUSPEND 2001 // ID para suspender la aplicación.
 #define ID_TRAY_EXIT 2002 // ID para salir de la aplicación.
 #define ID_TRAY_RESTART 2003 // ID para reiniciar la aplicación.
+#define ID_TRAY_SETTINGS 2004 // ID para abrir el diálogo de configuración.
 
 // Variables para manejar el estado de la aplicación y el ícono de la bandeja.
 static bool g_suspended = false; // Estado de suspensión (si está pausada o no).
@@ -784,6 +816,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     
     RegisterClassEx(&wc); // Registramos la clase de ventana.
     
+    // Cargar configuración desde INI
+    LoadConfiguration();
+    
     // Inicializamos COM y el administrador de escritorios virtuales.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); // Inicializamos COM en modo apartment-threaded.
     HRESULT hr = CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&g_vdm)); // Creamos el administrador de escritorios virtuales.
@@ -795,6 +830,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     int screenH = rc.bottom - rc.top; // Alto de la pantalla.
     g_overlayWidth = (int)(screenW * 0.88); // 88% del ancho de la pantalla.
     g_overlayHeight = (int)(screenH * 0.80); // 80% del alto de la pantalla.
+    UpdatePreviewSize(); // Recalculate with final dimensions
     // Creamos la ventana como overlay para mayor eficiencia.
     HWND hwnd = CreateWindowEx( // Creamos la ventana.
         WS_EX_TOPMOST | WS_EX_LAYERED, // Estilos extendidos: siempre arriba y con capas.
@@ -807,7 +843,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_mainHwnd = hwnd; // Guardamos el handle para las notificaciones.
     
     // Configuramos la ventana como overlay eficiente.
-    SetLayeredWindowAttributes(hwnd, 0, OVERLAY_BG_ALPHA, LWA_ALPHA); // Establecemos la transparencia.
+    SetLayeredWindowAttributes(hwnd, 0, g_overlayAlpha, LWA_ALPHA); // Establecemos la transparencia con config.
     
     // Establecemos una región redondeada para la ventana de superposición.
     HRGN rgn = CreateRoundRectRgn(0, 0, g_overlayWidth, g_overlayHeight, 60, 60); // Región redondeada de 60x60 píxeles.
@@ -890,13 +926,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 POINT pt; // Variable para la posición del cursor.
                 GetCursorPos(&pt); // Obtenemos la posición del cursor.
                 HMENU hMenu = CreatePopupMenu(); // Creamos un menú popup.
+                AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"Settings...");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING | (g_suspended ? MF_CHECKED : 0), ID_TRAY_SUSPEND, g_suspended ? L"Reanudar" : L"Suspend"); // Opción de suspender/reanudar.
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_RESTART, L"Restart"); // Opción de reiniciar.
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit"); // Opción de salir.
                 SetForegroundWindow(hwnd); // Ponemos nuestra ventana al frente.
                 int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, NULL); // Mostramos el menú y obtenemos la selección.
                 DestroyMenu(hMenu); // Destruimos el menú.
-                if (cmd == ID_TRAY_SUSPEND) { // Si eligieron suspender.
+                if (cmd == ID_TRAY_SETTINGS) {
+                    ShowSettingsDialog(hwnd);
+                } else if (cmd == ID_TRAY_SUSPEND) { // Si eligieron suspender.
                     g_suspended = !g_suspended; // Cambiamos el estado de suspensión.
                 } else if (cmd == ID_TRAY_EXIT) { // Si eligieron salir.
                     PostQuitMessage(0); // Enviamos mensaje para salir.
@@ -1035,16 +1075,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // Calculamos el área de la cuadrícula (restamos el relleno de ambos lados).
             int gridAreaW = clientRect.right - 2 * GRID_PADDING_X; // Ancho del área de la grilla.
             int gridAreaH = clientRect.bottom - 2 * GRID_PADDING_Y; // Alto del área de la grilla.
-            int cols = FIXED_COLS; // Número fijo de columnas.
+            int cols = g_fixedCols; // Número fijo de columnas.
             int rows = (n + cols - 1) / cols; // Calculamos las filas necesarias.
             
-            int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN; // Ancho total de la grilla.
-            int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN; // Alto total de la grilla.
+            int gridW = cols * g_previewW + (cols - 1) * PREVIEW_MARGIN; // Ancho total de la grilla.
+            int gridH = rows * g_previewH + (rows - 1) * PREVIEW_MARGIN; // Alto total de la grilla.
             
             int startX = GRID_PADDING_X - g_scrollX; // Posición X de inicio considerando el scroll.
             int startY = GRID_PADDING_Y - g_scrollY; // Posición Y de inicio considerando el scroll.
             
             g_scrollMax = (gridW > gridAreaW) ? (gridW - gridAreaW) : 0; // Máximo scroll horizontal.
+            g_scrollMax = 0; // Force no horizontal scroll since we sized to fit
             g_scrollMaxY = (gridH > gridAreaH) ? (gridH - gridAreaH) : 0; // Máximo scroll vertical.
             
             if (g_scrollMax > 0 && y > clientRect.bottom - SCROLLBAR_HEIGHT) { // Si hay scroll horizontal y el clic está en la barra de scroll.
@@ -1066,11 +1107,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             for (int i = 0; i < n; ++i) { // Recorremos todas las ventanas.
                 int row = i / cols; // Fila de la ventana.
                 int col = i % cols; // Columna de la ventana.
-                int windowX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN); // Posición X de la ventana.
-                int windowY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN); // Posición Y de la ventana.
+                int windowX = startX + col * (g_previewW + PREVIEW_MARGIN); // Posición X de la ventana.
+                int windowY = startY + row * (g_previewH + PREVIEW_MARGIN); // Posición Y de la ventana.
                 
-                if (x >= windowX && x < windowX + PREVIEW_WIDTH && // Si el clic está dentro del ancho de la ventana.
-                    y >= windowY && y < windowY + PREVIEW_HEIGHT) { // Si el clic está dentro del alto de la ventana.
+                if (x >= windowX && x < windowX + g_previewW && // Si el clic está dentro del ancho de la ventana.
+                    y >= windowY && y < windowY + g_previewH) { // Si el clic está dentro del alto de la ventana.
                     
                     // Debug: Log that we're inside a window cell
                     wchar_t cellDebugMsg[256];
@@ -1086,7 +1127,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (!g_dynamicOrder) { // Solo en modo persistente
                         // Account for cell inflation (same as in drawing code)
                         int inflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
-                        int pinX = windowX + PREVIEW_WIDTH - 28 + inflation; // Posición X del botón de pin.
+                        int pinX = windowX + g_previewW - 28 + inflation; // Posición X del botón de pin.
                         int pinY = windowY + 8 + inflation; // Posición Y del botón de pin.
                         
                         // Debug: Log pin button coordinates and click position
@@ -1113,7 +1154,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     // Verificamos si el clic fue en el botón de cerrar.
                     // Account for cell inflation (same as in drawing code)
                     int closeInflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
-                    int closeX = windowX + PREVIEW_WIDTH - 28 + closeInflation; // Posición X del botón de cerrar.
+                    int closeX = windowX + g_previewW - 28 + closeInflation; // Posición X del botón de cerrar.
                     int closeY;
                     if (!g_dynamicOrder) {
                         // En modo persistente, el botón de cerrar está debajo del pin
@@ -1132,7 +1173,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (!g_dynamicOrder) { // Solo en modo persistente
                         // Account for cell inflation (same as in drawing code)
                         int pinToPosInflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
-                        int pinToPosX = windowX + PREVIEW_WIDTH - 28 + pinToPosInflation; // Posición X del botón de pin a posición.
+                        int pinToPosX = windowX + g_previewW - 28 + pinToPosInflation; // Posición X del botón de pin a posición.
                         int pinToPosY = windowY + 8 + 22 + PIN_CLOSE_VERTICAL_GAP + 14 + PIN_CLOSE_VERTICAL_GAP + pinToPosInflation; // Posición Y del botón de pin a posición (debajo del close).
                         if (x >= pinToPosX && x < pinToPosX + PIN_TO_POS_BUTTON_SIZE && y >= pinToPosY && y < pinToPosY + PIN_TO_POS_BUTTON_SIZE) { // Si el clic fue en el botón de pin a posición.
                             // Mostramos el diálogo para ingresar la posición.
@@ -1190,14 +1231,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             auto& windows = g_windows; // Referencia a la lista de ventanas.
             SortWindowsForGrid(windows); // Ordenamos las ventanas para la grilla.
             int n = (int)windows.size(); // Cantidad de ventanas.
-            int cols = FIXED_COLS; // Número fijo de columnas.
+            int cols = g_fixedCols; // Número fijo de columnas.
             int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X; // Ancho del área de la grilla.
             int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y; // Alto del área de la grilla.
             int rows = (n + cols - 1) / cols; // Calculamos las filas necesarias.
             int startX = GRID_PADDING_X - g_scrollX; // Posición X de inicio considerando el scroll.
             int startY = GRID_PADDING_Y - g_scrollY; // Posición Y de inicio considerando el scroll.
-            int col = (x - startX) / (PREVIEW_WIDTH + PREVIEW_MARGIN); // Columna donde está el mouse.
-            int row = (y - startY) / (PREVIEW_HEIGHT + PREVIEW_MARGIN); // Fila donde está el mouse.
+            int col = (x - startX) / (g_previewW + PREVIEW_MARGIN); // Columna donde está el mouse.
+            int row = (y - startY) / (g_previewH + PREVIEW_MARGIN); // Fila donde está el mouse.
             int idx = row * cols + col; // Índice de la ventana.
             // Detección de hover para el botón de pin.
             int oldPinHover = g_pinHoverIndex; // Guardamos el hover anterior.
@@ -1205,24 +1246,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int oldCloseHover = g_closeHoverIndex; // Guardamos el hover anterior.
             g_closeHoverIndex = -1; // Reseteamos el hover.
             if (idx >= 0 && idx < n) { // Si el índice es válido.
-                int cellX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN); // Posición X de la celda.
-                int cellY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN); // Posición Y de la celda.
+                int cellX = startX + col * (g_previewW + PREVIEW_MARGIN); // Posición X de la celda.
+                int cellY = startY + row * (g_previewH + PREVIEW_MARGIN); // Posición Y de la celda.
                 const int pinSize = 22; // Tamaño del pin.
                 const int closeSize = 14; // Tamaño del botón de cerrar.
                 if (!g_dynamicOrder) { // Si no es orden dinámico.
                     // Detección de hover para el botón de pin.
-                    RECT pinRect = { cellX + PREVIEW_WIDTH - 28, cellY + 8, cellX + PREVIEW_WIDTH - 28 + pinSize, cellY + 8 + pinSize }; // Rectángulo del botón de pin.
+                    RECT pinRect = { cellX + g_previewW - 28, cellY + 8, cellX + g_previewW - 28 + pinSize, cellY + 8 + pinSize }; // Rectángulo del botón de pin.
                     if (x >= pinRect.left && x < pinRect.right && y >= pinRect.top && y < pinRect.bottom) { // Si el mouse está sobre el botón.
                         g_pinHoverIndex = idx; // Activamos el hover.
                     }
                     
                     const int closeY = cellY + 8 + pinSize + PIN_CLOSE_VERTICAL_GAP; // Posición Y del botón de cerrar.
-                    RECT closeRect = { cellX + PREVIEW_WIDTH - 28, closeY, cellX + PREVIEW_WIDTH - 28 + closeSize, closeY + closeSize }; // Rectángulo del botón de cerrar.
+                    RECT closeRect = { cellX + g_previewW - 28, closeY, cellX + g_previewW - 28 + closeSize, closeY + closeSize }; // Rectángulo del botón de cerrar.
                     if (x >= closeRect.left && x < closeRect.right && y >= closeRect.top && y < closeRect.bottom) { // Si el mouse está sobre el botón.
                         g_closeHoverIndex = idx; // Activamos el hover.
                     }
                 } else { // Si es orden dinámico.
-                    RECT closeRect = { cellX + PREVIEW_WIDTH - 28, cellY + 8, cellX + PREVIEW_WIDTH - 28 + closeSize, cellY + 8 + closeSize }; // Rectángulo del botón de cerrar.
+                    RECT closeRect = { cellX + g_previewW - 28, cellY + 8, cellX + g_previewW - 28 + closeSize, cellY + 8 + closeSize }; // Rectángulo del botón de cerrar.
                     if (x >= closeRect.left && x < closeRect.right && y >= closeRect.top && y < closeRect.bottom) { // Si el mouse está sobre el botón.
                         g_closeHoverIndex = idx; // Activamos el hover.
                     }
@@ -1234,13 +1275,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int oldPinToPosHover = g_pinToPosHoverIndex; // Guardamos el hover anterior.
             g_pinToPosHoverIndex = -1; // Reseteamos el hover.
             if (idx >= 0 && idx < n) { // Si el índice es válido.
-                int cellX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN); // Posición X de la celda.
-                int cellY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN); // Posición Y de la celda.
+                int cellX = startX + col * (g_previewW + PREVIEW_MARGIN); // Posición X de la celda.
+                int cellY = startY + row * (g_previewH + PREVIEW_MARGIN); // Posición Y de la celda.
                 const int pinSize = 22; // Tamaño del pin.
                 const int closeSize = 14; // Tamaño del botón de cerrar.
                 if (!g_dynamicOrder) { // Si no es orden dinámico.
                     int pinToPosY = cellY + 8 + pinSize + PIN_CLOSE_VERTICAL_GAP + closeSize + PIN_CLOSE_VERTICAL_GAP; // Posición Y del botón de pin a posición.
-                    RECT pinToPosRect = { cellX + PREVIEW_WIDTH - 28, pinToPosY, cellX + PREVIEW_WIDTH - 28 + PIN_TO_POS_BUTTON_SIZE, pinToPosY + PIN_TO_POS_BUTTON_SIZE }; // Rectángulo del botón.
+                    RECT pinToPosRect = { cellX + g_previewW - 28, pinToPosY, cellX + g_previewW - 28 + PIN_TO_POS_BUTTON_SIZE, pinToPosY + PIN_TO_POS_BUTTON_SIZE }; // Rectángulo del botón.
                     if (x >= pinToPosRect.left && x < pinToPosRect.right && y >= pinToPosRect.top && y < pinToPosRect.bottom) { // Si el mouse está sobre el botón.
                         g_pinToPosHoverIndex = idx; // Activamos el hover.
                     }
@@ -1267,21 +1308,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             auto& windows = g_windows; // Referencia a la lista de ventanas.
             SortWindowsForGrid(windows); // Ordenamos las ventanas para la grilla.
             int n = (int)windows.size(); // Cantidad de ventanas.
-            int cols = FIXED_COLS; // Número fijo de columnas.
+            int cols = g_fixedCols; // Número fijo de columnas.
             int gridAreaW = clientRect.right - 2 * GRID_PADDING_X; // Ancho del área de la grilla.
             int gridAreaH = clientRect.bottom - 2 * GRID_PADDING_Y; // Alto del área de la grilla.
             int rows = (n + cols - 1) / cols; // Calculamos las filas necesarias.
-            int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
-            int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+            int gridW = cols * g_previewW + (cols - 1) * PREVIEW_MARGIN;
+            int gridH = rows * g_previewH + (rows - 1) * PREVIEW_MARGIN;
             int startX = GRID_PADDING_X - g_scrollX;
             int startY = GRID_PADDING_Y - g_scrollY;
-            int col = (x - startX) / (PREVIEW_WIDTH + PREVIEW_MARGIN);
-            int row = (y - startY) / (PREVIEW_HEIGHT + PREVIEW_MARGIN);
+            int col = (x - startX) / (g_previewW + PREVIEW_MARGIN);
+            int row = (y - startY) / (g_previewH + PREVIEW_MARGIN);
             int idx = row * cols + col;
             if (idx >= 0 && idx < n) {
-                int cellX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                int cellY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
-                RECT cellRect = { cellX, cellY, cellX + PREVIEW_WIDTH, cellY + PREVIEW_HEIGHT };
+                int cellX = startX + col * (g_previewW + PREVIEW_MARGIN);
+                int cellY = startY + row * (g_previewH + PREVIEW_MARGIN);
+                RECT cellRect = { cellX, cellY, cellX + g_previewW, cellY + g_previewH };
                 if (x >= cellRect.left && x < cellRect.right && y >= cellRect.top && y < cellRect.bottom) {
                     if (!g_dynamicOrder) {
                         HMENU hMenu = CreatePopupMenu();
@@ -1348,25 +1389,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 SortWindowsForGrid(windows);
                 int n = (int)windows.size();
                 if (n > 0) {
-                    int cols = FIXED_COLS;
+                    int cols = g_fixedCols;
                     int rows = (n + cols - 1) / cols;
                     int row = g_selectedIndex / cols;
                     int col = g_selectedIndex % cols;
                     int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X;
                     int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y;
-                    int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
-                    int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+                    int gridW = cols * g_previewW + (cols - 1) * PREVIEW_MARGIN;
+                    int gridH = rows * g_previewH + (rows - 1) * PREVIEW_MARGIN;
                     int startX = GRID_PADDING_X - g_scrollX;
                     int startY = GRID_PADDING_Y - g_scrollY;
                     auto scrollToSelected = [&]() {
-                        int selX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                        int selY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
+                        int selX = startX + col * (g_previewW + PREVIEW_MARGIN);
+                        int selY = startY + row * (g_previewH + PREVIEW_MARGIN);
                         // Horizontal
                         if (selX < GRID_PADDING_X) g_scrollX = max(0, g_scrollX - (GRID_PADDING_X - selX));
-                        else if (selX + PREVIEW_WIDTH > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + PREVIEW_WIDTH - (g_overlayWidth - GRID_PADDING_X)));
+                        else if (selX + g_previewW > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + g_previewW - (g_overlayWidth - GRID_PADDING_X)));
                         // Vertical
                         if (selY < GRID_PADDING_Y) g_scrollY = max(0, g_scrollY - (GRID_PADDING_Y - selY));
-                        else if (selY + PREVIEW_HEIGHT > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + PREVIEW_HEIGHT - (g_overlayHeight - GRID_PADDING_Y)));
+                        else if (selY + g_previewH > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + g_previewH - (g_overlayHeight - GRID_PADDING_Y)));
                     };
                     if (wParam == VK_TAB) {
                         if (GetKeyState(VK_SHIFT) & 0x8000) {
@@ -1446,23 +1487,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 SortWindowsForGrid(windows);
                 int n = (int)windows.size();
                 if (n > 0) {
-                    int cols = FIXED_COLS;
+                    int cols = g_fixedCols;
                     int rows = (n + cols - 1) / cols;
                     int row = g_selectedIndex / cols;
                     int col = g_selectedIndex % cols;
                     int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X;
                     int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y;
-                    int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
-                    int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+                    int gridW = cols * g_previewW + (cols - 1) * PREVIEW_MARGIN;
+                    int gridH = rows * g_previewH + (rows - 1) * PREVIEW_MARGIN;
                     int startX = GRID_PADDING_X - g_scrollX;
                     int startY = GRID_PADDING_Y - g_scrollY;
                     auto scrollToSelected = [&]() {
-                        int selX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                        int selY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
+                        int selX = startX + col * (g_previewW + PREVIEW_MARGIN);
+                        int selY = startY + row * (g_previewH + PREVIEW_MARGIN);
                         if (selX < GRID_PADDING_X) g_scrollX = max(0, g_scrollX - (GRID_PADDING_X - selX));
-                        else if (selX + PREVIEW_WIDTH > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + PREVIEW_WIDTH - (g_overlayWidth - GRID_PADDING_X)));
+                        else if (selX + g_previewW > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + g_previewW - (g_overlayWidth - GRID_PADDING_X)));
                         if (selY < GRID_PADDING_Y) g_scrollY = max(0, g_scrollY - (GRID_PADDING_Y - selY));
-                        else if (selY + PREVIEW_HEIGHT > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + PREVIEW_HEIGHT - (g_overlayHeight - GRID_PADDING_Y)));
+                        else if (selY + g_previewH > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + g_previewH - (g_overlayHeight - GRID_PADDING_Y)));
                     };
                     if (wParam == VK_LEFT) {
                         if (col > 0) g_selectedIndex--;
@@ -1531,7 +1572,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
             
             // Fondo transparente para overlay eficiente
-            BLENDFUNCTION blend = { AC_SRC_OVER, 0, OVERLAY_BG_ALPHA, 0 };
+            BLENDFUNCTION blend = { AC_SRC_OVER, 0, g_overlayAlpha, 0 };
             HBRUSH bgBrush = CreateSolidBrush(OVERLAY_BG_COLOR);
             FillRect(memDC, &clientRect, bgBrush);
             DeleteObject(bgBrush);
@@ -1539,29 +1580,29 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             auto& windows = EnumerateWindows(hwnd);
             SortWindowsForGrid(windows);
             int n = (int)windows.size();
-            int cols = FIXED_COLS;
+            int cols = g_fixedCols;
             int gridAreaW = clientRect.right - 2 * GRID_PADDING_X;
             int gridAreaH = clientRect.bottom - 2 * GRID_PADDING_Y;
             int rows = (n + cols - 1) / cols;
-            int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
-            int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+            int gridW = cols * g_previewW + (cols - 1) * PREVIEW_MARGIN; // Ancho total de la grilla.
+            int gridH = rows * g_previewH + (rows - 1) * PREVIEW_MARGIN; // Alto total de la grilla.
             int startX = GRID_PADDING_X - g_scrollX;
             int startY = GRID_PADDING_Y - g_scrollY;
             g_scrollMax = (gridW > gridAreaW) ? (gridW - gridAreaW) : 0;
             g_scrollMaxY = (gridH > gridAreaH) ? (gridH - gridAreaH) : 0;
-            int firstCol = max(0, g_scrollX / (PREVIEW_WIDTH + PREVIEW_MARGIN));
-            int lastCol = min(cols - 1, (g_scrollX + gridAreaW) / (PREVIEW_WIDTH + PREVIEW_MARGIN));
-            int firstRow = max(0, g_scrollY / (PREVIEW_HEIGHT + PREVIEW_MARGIN));
-            int lastRow = min(rows - 1, (g_scrollY + gridAreaH) / (PREVIEW_HEIGHT + PREVIEW_MARGIN));
+            int firstCol = max(0, g_scrollX / (g_previewW + PREVIEW_MARGIN));
+            int lastCol = min(cols - 1, (g_scrollX + gridAreaW) / (g_previewW + PREVIEW_MARGIN));
+            int firstRow = max(0, g_scrollY / (g_previewH + PREVIEW_MARGIN));
+            int lastRow = min(rows - 1, (g_scrollY + gridAreaH) / (g_previewH + PREVIEW_MARGIN));
             std::vector<bool> visible(n, false);
             for (int r = firstRow; r <= lastRow; ++r) {
                 for (int c = firstCol; c <= lastCol; ++c) {
                     int idx = r * cols + c;
                     if (idx >= n) continue;
-                    int x = startX + c * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                    int y = startY + r * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
-                    if (x + PREVIEW_WIDTH < GRID_PADDING_X || x > clientRect.right - GRID_PADDING_X ||
-                        y + PREVIEW_HEIGHT < GRID_PADDING_Y || y > clientRect.bottom - GRID_PADDING_Y)
+                    int x = startX + c * (g_previewW + PREVIEW_MARGIN);
+                    int y = startY + r * (g_previewH + PREVIEW_MARGIN);
+                    if (x + g_previewW < GRID_PADDING_X || x > clientRect.right - GRID_PADDING_X ||
+                        y + g_previewH < GRID_PADDING_Y || y > clientRect.bottom - GRID_PADDING_Y)
                         continue;
                     visible[idx] = true;
                 }
@@ -1573,19 +1614,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     int idx = r * cols + c;
                     if (idx >= n) continue;
                     if (g_dragging && idx == g_dragIndex) continue; // salta la arrastrada
-                    int x = startX + c * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                    int y = startY + r * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
-                    if (x + PREVIEW_WIDTH < GRID_PADDING_X || x > clientRect.right - GRID_PADDING_X ||
-                        y + PREVIEW_HEIGHT < GRID_PADDING_Y || y > clientRect.bottom - GRID_PADDING_Y)
+                    int x = startX + c * (g_previewW + PREVIEW_MARGIN);
+                    int y = startY + r * (g_previewH + PREVIEW_MARGIN);
+                    if (x + g_previewW < GRID_PADDING_X || x > clientRect.right - GRID_PADDING_X ||
+                        y + g_previewH < GRID_PADDING_Y || y > clientRect.bottom - GRID_PADDING_Y)
                         continue;
                     // Dibuja el espacio/resaltado en el destino de soltado
                     if (g_dragging && idx == g_hoverIndex) {
-                        RECT gapRect = { x-4, y-4, x + PREVIEW_WIDTH+4, y + PREVIEW_HEIGHT+4 };
+                        RECT gapRect = { x-4, y-4, x + g_previewW+4, y + g_previewH+4 };
                         HBRUSH gapBrush = CreateSolidBrush(RGB(0,255,68));
                         FrameRect(memDC, &gapRect, gapBrush);
                         DeleteObject(gapBrush);
                     }
-                    RECT cellRect = { x, y, x + PREVIEW_WIDTH, y + PREVIEW_HEIGHT };
+                    RECT cellRect = { x, y, x + g_previewW, y + g_previewH };
                     int border = (idx == g_hoverIndex || idx == g_selectedIndex) ? 6 : (idx == g_dragIndex) ? 4 : 2;
                     COLORREF borderColor = (idx == g_selectedIndex) ? HIGHLIGHT_COLOR : (idx == g_hoverIndex) ? HOVER_BORDER_COLOR : (idx == g_dragIndex) ? DRAG_BORDER_COLOR : BORDER_COLOR;
                     if (idx == g_hoverIndex || idx == g_selectedIndex) {
@@ -1688,9 +1729,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             // Dibuja la miniatura arrastrada en la posición del mouse con una sombra
             if (g_dragging && g_dragIndex != -1 && g_dragIndex < n) {
-                int dragX = g_dragMouseX - PREVIEW_WIDTH / 2;
-                int dragY = g_dragMouseY - PREVIEW_HEIGHT / 2;
-                RECT cellRect = { dragX, dragY, dragX + PREVIEW_WIDTH, dragY + PREVIEW_HEIGHT };
+                int dragX = g_dragMouseX - g_previewW / 2;
+                int dragY = g_dragMouseY - g_previewH / 2;
+                RECT cellRect = { dragX, dragY, dragX + g_previewW, dragY + g_previewH };
                 // Dibuja la sombra
                 RECT shadowRect = cellRect;
                 OffsetRect(&shadowRect, 4, 8);
@@ -2108,4 +2149,86 @@ LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
     return 0;
+}
+
+// ============================================================
+//  resize de las miniaturas para que todas las columnas encajen en el overlay
+// ============================================================
+int g_previewW = BASE_PREVIEW_WIDTH; // inicializado con constante
+int g_previewH = BASE_PREVIEW_HEIGHT;
+
+void UpdatePreviewSize()
+{
+    int usable = g_overlayWidth - 2 * GRID_PADDING_X - (g_fixedCols - 1) * PREVIEW_MARGIN;
+    g_previewW = max(40, usable / g_fixedCols);  // Min size to avoid tiny thumbs
+    g_previewH = (int)(g_previewW * (float)BASE_PREVIEW_HEIGHT / BASE_PREVIEW_WIDTH);  // Preserve aspect
+}
+
+#undef PREVIEW_WIDTH
+#undef PREVIEW_HEIGHT
+#define PREVIEW_WIDTH  g_previewW
+#define PREVIEW_HEIGHT g_previewH
+
+LRESULT CALLBACK SettingsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            CreateWindowW(L"STATIC", L"Columns:", WS_CHILD | WS_VISIBLE, 10, 10, 100, 20, hwnd, (HMENU)IDC_COLUMNS_LABEL, nullptr, nullptr);
+            wchar_t currentCols[4];
+            _itow_s(g_fixedCols, currentCols, 4, 10);
+            CreateWindowW(L"EDIT", currentCols, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 120, 10, 50, 20, hwnd, (HMENU)IDC_COLUMNS_EDIT, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 80, 50, 80, 25, hwnd, (HMENU)IDC_APPLY_BUTTON, nullptr, nullptr);
+            return 0;
+        }
+        case WM_COMMAND: {
+            if (LOWORD(wParam) == IDC_APPLY_BUTTON) {
+                wchar_t newColsStr[4];
+                GetDlgItemTextW(hwnd, IDC_COLUMNS_EDIT, newColsStr, 4);
+                int newCols = _wtoi(newColsStr);
+                if (newCols > 0 && newCols < 20) { 
+                    g_fixedCols = newCols;
+                    
+                    wchar_t exePath[MAX_PATH];
+                    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+                    PathRemoveFileSpecW(exePath);
+                    wcscat_s(exePath, L"\\BetterAltTab.ini");
+                    WritePrivateProfileStringW(L"General", L"Columns", newColsStr, exePath);
+                    
+                    UpdatePreviewSize();
+                    DestroyWindow(hwnd);
+                } else {
+                    MessageBoxW(hwnd, L"Please enter a number between 1 and 19.", L"Invalid Input", MB_OK | MB_ICONEXCLAMATION);
+                }
+            }
+            return 0;
+        }
+        case WM_CLOSE: {
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        case WM_DESTROY: {
+            return 0;
+        }
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void ShowSettingsDialog(HWND parent) {
+    const wchar_t SETTINGS_CLASS_NAME[] = L"BetterAltTabSettingsClass";
+    WNDCLASSW wc = {0};
+    wc.lpfnWndProc = SettingsDlgProc;
+    wc.hInstance = GetModuleHandle(NULL);
+    wc.lpszClassName = SETTINGS_CLASS_NAME;
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    RegisterClassW(&wc);
+
+    HWND hwnd = CreateWindowExW(
+        0, SETTINGS_CLASS_NAME, L"Settings",
+        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX,
+        CW_USEDEFAULT, CW_USEDEFAULT, 250, 120,
+        parent, nullptr, wc.hInstance, nullptr);
+
+    if (hwnd) {
+        ShowWindow(hwnd, SW_SHOW);
+        UpdateWindow(hwnd);
+    }
 }
