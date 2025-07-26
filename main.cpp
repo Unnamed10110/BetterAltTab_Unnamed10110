@@ -106,6 +106,7 @@ static int g_hoverIndex = -1; // Sobre qué ventana está el mouse.
 static int g_dragMouseX = 0; // Dónde está el mouse cuando arrastramos.
 static int g_dragMouseY = 0; // Dónde está el mouse cuando arrastramos (Y).
 // Variables globales para el hover de los íconos.
+static int g_pinHoverIndex = -1; // Sobre qué botón de pin está el mouse.
 static int g_closeHoverIndex = -1; // Sobre qué botón de cerrar está el mouse.
 static int g_pinToPosHoverIndex = -1; // Sobre qué botón de pin a posición está el mouse.
 static int g_lastHotkey = 0; // Último atajo usado: 0 = ninguno, 1 = ctrl+numpad, 2 = alt+q.
@@ -1071,31 +1072,88 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (x >= windowX && x < windowX + PREVIEW_WIDTH && // Si el clic está dentro del ancho de la ventana.
                     y >= windowY && y < windowY + PREVIEW_HEIGHT) { // Si el clic está dentro del alto de la ventana.
                     
+                    // Debug: Log that we're inside a window cell
+                    wchar_t cellDebugMsg[256];
+                    wsprintfW(cellDebugMsg, L"Click inside window %d cell: windowX=%d, windowY=%d, clickX=%d, clickY=%d\n", 
+                             i, windowX, windowY, x, y);
+                    OutputDebugStringW(cellDebugMsg);
+                    
+                    // Verificamos si el clic fue en el botón de pin (toggle pin/unpin).
+                    // Debug: Log dynamic order state
+                    wchar_t orderDebugMsg[256];
+                    wsprintfW(orderDebugMsg, L"g_dynamicOrder: %s\n", g_dynamicOrder ? L"true" : L"false");
+                    OutputDebugStringW(orderDebugMsg);
+                    if (!g_dynamicOrder) { // Solo en modo persistente
+                        // Account for cell inflation (same as in drawing code)
+                        int inflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
+                        int pinX = windowX + PREVIEW_WIDTH - 28 + inflation; // Posición X del botón de pin.
+                        int pinY = windowY + 8 + inflation; // Posición Y del botón de pin.
+                        
+                        // Debug: Log pin button coordinates and click position
+                        wchar_t pinDebugMsg[256];
+                        wsprintfW(pinDebugMsg, L"Pin button for window %d: pinX=%d, pinY=%d, clickX=%d, clickY=%d, inflation=%d\n", 
+                                 i, pinX, pinY, x, y, inflation);
+                        OutputDebugStringW(pinDebugMsg);
+                        
+                        if (x >= pinX && x < pinX + 22 && y >= pinY && y < pinY + 22) { // Si el clic fue en el botón de pin.
+                            // Debug: Log successful pin button click
+                            wchar_t successDebugMsg[256];
+                            wsprintfW(successDebugMsg, L"Pin button clicked for window %d, pinned: %s\n", i, windows[i].pinned ? L"true" : L"false");
+                            OutputDebugStringW(successDebugMsg);
+                            // Cambiamos el estado de pin de la ventana.
+                            windows[i].pinned = !windows[i].pinned; // Invertimos el estado de pin.
+                            SaveGridOrder(windows); // Guardamos el nuevo orden.
+                            LoadGridOrder(g_gridOrder); // Reload to in-memory list
+                            ApplyGridOrder(windows, g_gridOrder); // Reapply ordering/pin states
+                            InvalidateGrid(hwnd); // Redraw grid
+                            return 0; // No procesamos más.
+                        }
+                    }
+                    
                     // Verificamos si el clic fue en el botón de cerrar.
-                    int closeX = windowX + PREVIEW_WIDTH - 20; // Posición X del botón de cerrar.
-                    int closeY = windowY + 5; // Posición Y del botón de cerrar.
-                    if (x >= closeX && x < closeX + 15 && y >= closeY && y < closeY + 15) { // Si el clic fue en el botón de cerrar.
+                    // Account for cell inflation (same as in drawing code)
+                    int closeInflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
+                    int closeX = windowX + PREVIEW_WIDTH - 28 + closeInflation; // Posición X del botón de cerrar.
+                    int closeY;
+                    if (!g_dynamicOrder) {
+                        // En modo persistente, el botón de cerrar está debajo del pin
+                        closeY = windowY + 8 + 22 + PIN_CLOSE_VERTICAL_GAP + closeInflation;
+                    } else {
+                        // En modo dinámico, el botón de cerrar está en la posición del pin
+                        closeY = windowY + 8 + closeInflation;
+                    }
+                    if (x >= closeX && x < closeX + 14 && y >= closeY && y < closeY + 14) { // Si el clic fue en el botón de cerrar.
                         // Cerramos la ventana.
                         PostMessage(windows[i].hwnd, WM_CLOSE, 0, 0); // Enviamos mensaje para cerrar la ventana.
                         return 0; // No procesamos más.
                     }
                     
-                    // Verificamos si el clic fue en el botón de pin a posición.
-                    int pinToPosX = windowX + PREVIEW_WIDTH - 40; // Posición X del botón de pin a posición.
-                    int pinToPosY = windowY + 5; // Posición Y del botón de pin a posición.
-                    if (x >= pinToPosX && x < pinToPosX + 15 && y >= pinToPosY && y < pinToPosY + 15) { // Si el clic fue en el botón de pin a posición.
-                        // Mostramos el diálogo para ingresar la posición.
-                        int newPos = ShowNumberInputDialog(hwnd, L"Enter position (1-999):"); // Mostramos el diálogo.
-                        if (newPos > 0 && newPos <= n) { // Si se ingresó una posición válida.
-                            // Movemos la ventana a la posición especificada.
-                            auto windowToMove = windows[i]; // Guardamos la ventana a mover.
-                            windows.erase(windows.begin() + i); // La quitamos de su posición actual.
-                            windows.insert(windows.begin() + newPos - 1, windowToMove); // La insertamos en la nueva posición.
-                            g_selectedIndex = newPos - 1; // Actualizamos la selección.
-                            g_hoverIndex = newPos - 1; // Actualizamos el hover.
-                            InvalidateGrid(hwnd); // Redibujamos la grilla.
+                    // Verificamos si el clic fue en el botón de pin a posición (#).
+                    if (!g_dynamicOrder) { // Solo en modo persistente
+                        // Account for cell inflation (same as in drawing code)
+                        int pinToPosInflation = (i == g_hoverIndex || i == g_selectedIndex) ? 4 : 0;
+                        int pinToPosX = windowX + PREVIEW_WIDTH - 28 + pinToPosInflation; // Posición X del botón de pin a posición.
+                        int pinToPosY = windowY + 8 + 22 + PIN_CLOSE_VERTICAL_GAP + 14 + PIN_CLOSE_VERTICAL_GAP + pinToPosInflation; // Posición Y del botón de pin a posición (debajo del close).
+                        if (x >= pinToPosX && x < pinToPosX + PIN_TO_POS_BUTTON_SIZE && y >= pinToPosY && y < pinToPosY + PIN_TO_POS_BUTTON_SIZE) { // Si el clic fue en el botón de pin a posición.
+                            // Mostramos el diálogo para ingresar la posición.
+                            int newPos = ShowNumberInputDialog(hwnd, L"Enter position (1-999):"); // Mostramos el diálogo.
+                            if (newPos > 0 && newPos <= n) { // Si se ingresó una posición válida.
+                                // Movemos la ventana a la posición especificada.
+                                auto windowToMove = windows[i]; // Guardamos la ventana a mover.
+                                // Aseguramos que quede fijada en la posición elegida.
+                                windowToMove.pinned = true;
+                                windows.erase(windows.begin() + i); // La quitamos de su posición actual.
+                                windows.insert(windows.begin() + newPos - 1, windowToMove); // La insertamos en la nueva posición.
+                                g_selectedIndex = newPos - 1; // Actualizamos la selección.
+                                g_hoverIndex = newPos - 1; // Actualizamos el hover.
+                                SaveGridOrder(windows); // Guardamos el nuevo orden.
+                                LoadGridOrder(g_gridOrder); // Reload into memory
+                                ApplyGridOrder(windows, g_gridOrder); // Apply order
+                                InvalidateGrid(hwnd); // Redraw grid
+                                return 0; // No procesamos más.
+                            }
+                            return 0; // No procesamos más.
                         }
-                        return 0; // No procesamos más.
                     }
                     
                     // Si el clic fue en la miniatura, la seleccionamos.
@@ -1128,7 +1186,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0; // No procesamos más.
             }
             
-            // Detección de hover para el ícono de cerrar.
+            // Detección de hover para los botones.
             auto& windows = g_windows; // Referencia a la lista de ventanas.
             SortWindowsForGrid(windows); // Ordenamos las ventanas para la grilla.
             int n = (int)windows.size(); // Cantidad de ventanas.
@@ -1141,6 +1199,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int col = (x - startX) / (PREVIEW_WIDTH + PREVIEW_MARGIN); // Columna donde está el mouse.
             int row = (y - startY) / (PREVIEW_HEIGHT + PREVIEW_MARGIN); // Fila donde está el mouse.
             int idx = row * cols + col; // Índice de la ventana.
+            // Detección de hover para el botón de pin.
+            int oldPinHover = g_pinHoverIndex; // Guardamos el hover anterior.
+            g_pinHoverIndex = -1; // Reseteamos el hover.
             int oldCloseHover = g_closeHoverIndex; // Guardamos el hover anterior.
             g_closeHoverIndex = -1; // Reseteamos el hover.
             if (idx >= 0 && idx < n) { // Si el índice es válido.
@@ -1149,6 +1210,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 const int pinSize = 22; // Tamaño del pin.
                 const int closeSize = 14; // Tamaño del botón de cerrar.
                 if (!g_dynamicOrder) { // Si no es orden dinámico.
+                    // Detección de hover para el botón de pin.
+                    RECT pinRect = { cellX + PREVIEW_WIDTH - 28, cellY + 8, cellX + PREVIEW_WIDTH - 28 + pinSize, cellY + 8 + pinSize }; // Rectángulo del botón de pin.
+                    if (x >= pinRect.left && x < pinRect.right && y >= pinRect.top && y < pinRect.bottom) { // Si el mouse está sobre el botón.
+                        g_pinHoverIndex = idx; // Activamos el hover.
+                    }
+                    
                     const int closeY = cellY + 8 + pinSize + PIN_CLOSE_VERTICAL_GAP; // Posición Y del botón de cerrar.
                     RECT closeRect = { cellX + PREVIEW_WIDTH - 28, closeY, cellX + PREVIEW_WIDTH - 28 + closeSize, closeY + closeSize }; // Rectángulo del botón de cerrar.
                     if (x >= closeRect.left && x < closeRect.right && y >= closeRect.top && y < closeRect.bottom) { // Si el mouse está sobre el botón.
@@ -1161,7 +1228,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 }
             }
-            if (g_closeHoverIndex != oldCloseHover) InvalidateGrid(hwnd); // Si cambió el hover, redibujamos.
+            if (g_pinHoverIndex != oldPinHover || g_closeHoverIndex != oldCloseHover) InvalidateGrid(hwnd); // Si cambió el hover, redibujamos.
 
             // Detección de hover para el botón de fijar a posición.
             int oldPinToPosHover = g_pinToPosHoverIndex; // Guardamos el hover anterior.
@@ -1567,6 +1634,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     // En WM_PAINT, solo muestra el ícono de pin y el de cerrar debajo de él si el modo de orden persistente está activo
                     if (!g_dynamicOrder) {
                         const int closeSize = 14;
+                        
+                        // Dibuja el botón de pin con hover effect
+                        bool pinHover = (idx == g_pinHoverIndex);
+                        if (pinHover) {
+                            HBRUSH hoverBrush = CreateSolidBrush(RGB(255, 255, 200));
+                            RECT pinBg = { pinX - 2, pinY - 2, pinX + pinSize + 2, pinY + pinSize + 2 };
+                            FillRect(memDC, &pinBg, hoverBrush);
+                            DeleteObject(hoverBrush);
+                        }
                         DrawPinIcon(memDC, pinX, pinY, windows[idx].pinned);
                         bool closeHover = (idx == g_closeHoverIndex);
                         const int closeY = pinY + pinSize + PIN_CLOSE_VERTICAL_GAP;
@@ -1579,6 +1655,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         DrawCloseIcon(memDC, pinX, closeY, closeSize);
                         // Elimina DrawPinToPosButton, y en WM_PAINT, solo dibuja el ícono '#' para el botón de fijar a posición
                         int pinToPosY = closeY + closeSize + PIN_CLOSE_VERTICAL_GAP;
+                        
+                        // Dibuja el botón de pin a posición con hover effect
+                        bool pinToPosHover = (idx == g_pinToPosHoverIndex);
+                        if (pinToPosHover) {
+                            HBRUSH hoverBrush = CreateSolidBrush(RGB(200, 255, 255));
+                            RECT pinToPosBg = { pinX - 2, pinToPosY - 2, pinX + PIN_TO_POS_BUTTON_SIZE + 2, pinToPosY + PIN_TO_POS_BUTTON_SIZE + 2 };
+                            FillRect(memDC, &pinToPosBg, hoverBrush);
+                            DeleteObject(hoverBrush);
+                        }
                         DrawPinToPosIcon(memDC, pinX, pinToPosY, PIN_TO_POS_BUTTON_SIZE);
                         // Dibuja el sobre de número debajo del botón #
                         int numberY = pinToPosY + PIN_TO_POS_BUTTON_SIZE + 4;
