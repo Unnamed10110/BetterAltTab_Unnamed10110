@@ -1,71 +1,177 @@
-#define UNICODE
-#define _UNICODE
-#include <windows.h>
-#include <dwmapi.h>
-#include <windowsx.h>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <fstream>
-#include <commctrl.h>
-#include <uxtheme.h>
-#include <map>
-#include <shobjidl.h> // Para IVirtualDesktopManager
-#include <winuser.h>
-#include <psapi.h>
-#include <strsafe.h>
-#include <mutex>
-#include <algorithm>
-#include <shellapi.h> // Para ícono de bandeja
-#include <shlwapi.h>
-#include <objbase.h>
-#pragma comment(lib, "Shlwapi.lib")
+/*
+// Procedimiento principal de la ventana del overlay (maneja todos los mensajes de Windows)
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-#pragma comment(lib, "dwmapi.lib")
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "uxtheme.lib")
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "psapi.lib")
-#pragma comment(lib, "msimg32.lib") // Para AlphaBlend
-#pragma comment(lib, "msimg32.lib") // Para AlphaBlend
+// Enumera todas las ventanas abiertas que cumplen los criterios para mostrarse en el overlay
+std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd);
+
+// Registra las miniaturas DWM de todas las ventanas para poder dibujarlas en el overlay
+void RegisterThumbnails(HWND host, std::vector<WindowInfo>& windows);
+
+// Elimina las miniaturas DWM de todas las ventanas (limpieza de recursos)
+void UnregisterThumbnails(std::vector<WindowInfo>& windows);
+
+// Guarda el orden actual de las ventanas en disco para persistencia
+void SaveGridOrder(const std::vector<WindowInfo>& windows);
+
+// Carga el orden de las ventanas desde disco (persistencia)
+void LoadGridOrder(std::vector<PersistedWindow>& order);
+
+// Aplica el orden persistente a la lista de ventanas actual
+void ApplyGridOrder(std::vector<WindowInfo>& windows, const std::vector<PersistedWindow>& order);
+
+// Dibuja el ícono de una ventana en el overlay principal
+void DrawWindowIcon(HDC hdc, HWND hwnd, int x, int y, int size);
+
+// Dibuja texto con sombra para mejor visibilidad en el overlay
+void DrawTextWithShadow(HDC hdc, LPCWSTR text, RECT* rc, COLORREF color, int glowSize);
+
+// Centra la ventana del overlay en la pantalla
+void CenterOverlayWindow(HWND hwnd, int width, int height);
+
+// Fuerza el repintado de la grilla de ventanas en el overlay
+void InvalidateGrid(HWND hwnd);
+
+// Elimina todas las miniaturas DWM registradas (limpieza global)
+void UnregisterAllThumbnails();
+
+// Cambia el Z-order de las ventanas según el orden de la grilla (lleva cada ventana al tope en orden)
+void SetWindowsZOrder(const std::vector<WindowInfo>& windows);
+
+// Callback para EnumWindows: filtra solo las ventanas visibles y válidas para el overlay
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
+
+// Dibuja el ícono de pin en la miniatura de una ventana
+void DrawPinIcon(HDC hdc, int x, int y, bool pinned);
+
+// Dibuja el ícono de cerrar en la miniatura de una ventana
+void DrawCloseIcon(HDC hdc, int x, int y, int size);
+
+// Dibuja el ícono de fijar a posición en la miniatura de una ventana
+void DrawPinToPosIcon(HDC hdc, int x, int y, int size);
+
+// Dibuja el número sobre la miniatura de una ventana
+void DrawNumberOverlay(HDC hdc, int x, int y, int number);
+
+// Dibuja el orden de las ventanas para depuración
+void DebugOrder(const std::vector<WindowInfo>& windows, int dragIdx, int hoverIdx, int insertIdx);
+
+// Ordena las ventanas para la grilla según el modo actual
+void SortWindowsForGrid(std::vector<WindowInfo>& windows);
+
+// Procedimiento de ventana para el overlay minimalista de entrada de número (maneja mensajes)
+LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Muestra el overlay minimalista para ingresar un número (Ctrl)
+void ShowCtrlNumberOverlay(HWND parent);
+
+// Oculta y destruye el overlay minimalista de entrada de número
+void HideCtrlNumberOverlay();
+
+// Subclase del control de edición para capturar Enter/Escape y validar la entrada
+LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Escribe mensajes de depuración en un archivo de texto
+void LogDebugMessage(const wchar_t* msg);
+
+
+
+
+
+
+*/ */
+
+
+
+// Habilita soporte para Unicode en todo el proyecto (funciones de Windows y C usan wchar_t)
+#define UNICODE // Para funciones de la API de Windows
+#define _UNICODE // Para funciones estándar de C
 
 // ===============================
-// Definiciones y constantes globales
+// INCLUDES DEL SISTEMA Y LIBRERÍAS
 // ===============================
 
-// Paso 1: Definimos los valores que vamos a usar para la grilla y la superposición.
-// Esto nos permite cambiar el diseño fácilmente más adelante.
+#include <windows.h>            // Funciones y tipos principales de la API de Windows
+#include <dwmapi.h>             // Funciones para miniaturas y efectos de ventanas (DWM)
+#include <windowsx.h>           // Macros útiles para manipular ventanas y mensajes
+#include <vector>               // Contenedor dinámico de la STL para listas
+#include <string>               // Soporte para std::string y std::wstring
+#include <unordered_map>        // Mapa hash para acceso rápido por clave
+#include <fstream>              // Entrada/salida de archivos (persistencia)
+#include <commctrl.h>           // Controles comunes de Windows (tooltips, etc.)
+#include <uxtheme.h>            // Temas visuales de Windows (bordes, estilos)
+#include <map>                  // Mapa ordenado de la STL
+#include <shobjidl.h>           // Interfaz para escritorios virtuales (IVirtualDesktopManager)
+#include <winuser.h>            // Definiciones adicionales de la API de usuario de Windows
+#include <psapi.h>              // Funciones para información de procesos
+#include <strsafe.h>            // Funciones seguras para manejo de strings
+#include <mutex>                // Mutex de la STL para sincronización entre hilos
+#include <algorithm>            // Algoritmos estándar (sort, etc.)
+#include <shellapi.h>           // Funciones para íconos de bandeja y shell
+#include <shlwapi.h>            // Funciones utilitarias de shell (Path, etc.)
+#include <objbase.h>            // Inicialización de COM
 
-#define HOTKEY_ID 0xBEEF
-#define HOTKEY_ID_ALTQ 0xBEEE
-#define GRID_ORDER_FILE L"grid_order.bin"
+// ===============================
+// PRAGMAS DE ENLACE DE LIBRERÍAS
+// ===============================
+
+#pragma comment(lib, "Shlwapi.lib")      // Enlaza la librería de utilidades de shell
+#pragma comment(lib, "dwmapi.lib")       // Enlaza la librería de Desktop Window Manager
+#pragma comment(lib, "comctl32.lib")     // Enlaza la librería de controles comunes
+#pragma comment(lib, "uxtheme.lib")      // Enlaza la librería de temas visuales
+#pragma comment(lib, "ole32.lib")        // Enlaza la librería de COM
+#pragma comment(lib, "psapi.lib")        // Enlaza la librería de información de procesos
+#pragma comment(lib, "msimg32.lib")      // Enlaza la librería para AlphaBlend (transparencias)
+#pragma comment(lib, "msimg32.lib")      // (Repetido, pero sirve para AlphaBlend)
+
+// ===============================
+// DEFINES DE CONFIGURACIÓN Y ARCHIVOS
+// ===============================
+
+#define HOTKEY_ID 0xBEEF         // ID único para el hotkey principal (Alt+Q)
+#define HOTKEY_ID_ALTQ 0xBEEE    // ID único para el hotkey alternativo (Ctrl+Q)
+#define GRID_ORDER_FILE L"grid_order.bin" // Archivo donde se guarda el orden de las ventanas
+
 
 // Paso 2: Configuramos los márgenes, tamaños y colores de la UI.
 // Así logramos una apariencia moderna y cómoda para el usuario.
 
+// ===============================
+// CONFIGURACIÓN DEL OVERLAY PRINCIPAL (Alt+Q)
+// ===============================
+
 const int GRID_COLS = 4; // Columnas de la grilla (no se usa, ver FIXED_COLS)
-const int GRID_PADDING_X = 48; // Margen horizontal
-const int GRID_PADDING_Y = 48; // Margen vertical
-// Aumenta el tamaño de la superposición
-const int OVERLAY_WIDTH = 1692; // 1880 * 0.9
-const int OVERLAY_HEIGHT = 1000;
-const int PREVIEW_WIDTH = 299;
-const int PREVIEW_HEIGHT = 207;
-// Aumenta el margen entre miniaturas
-const int PREVIEW_MARGIN = 32;
-const COLORREF OVERLAY_BG_COLOR = RGB(0, 0, 0);
-const BYTE OVERLAY_BG_ALPHA = 230;
-const COLORREF BORDER_COLOR = RGB(32, 32, 48);
-const COLORREF HOVER_BORDER_COLOR = RGB(80, 180, 255);
-const COLORREF DRAG_BORDER_COLOR = RGB(180, 140, 255);
-const COLORREF TITLE_COLOR = RGB(255,255,255);
-const COLORREF HIGHLIGHT_COLOR = RGB(0, 255, 68);
-const int ICON_SIZE = 27;
-const int SCROLLBAR_HEIGHT = 12;
+const int GRID_PADDING_X = 48; // Margen horizontal interno del overlay principal
+const int GRID_PADDING_Y = 48; // Margen vertical interno del overlay principal
 
-// Siempre mostrar cinco miniaturas por fila
-const int FIXED_COLS = 5;
+// Tamaño total del overlay principal
+const int OVERLAY_WIDTH = 1692; // Ancho total del overlay principal (1880 * 0.9)
+const int OVERLAY_HEIGHT = 1000; // Alto total del overlay principal
 
+// Tamaño de cada miniatura de ventana
+const int PREVIEW_WIDTH = 299; // Ancho de cada miniatura de ventana
+const int PREVIEW_HEIGHT = 207; // Alto de cada miniatura de ventana
+
+// Espaciado entre miniaturas
+const int PREVIEW_MARGIN = 32; // Margen entre cada miniatura de ventana
+
+// Colores del overlay principal
+const COLORREF OVERLAY_BG_COLOR = RGB(0, 0, 0); // Color de fondo del overlay principal (negro)
+const BYTE OVERLAY_BG_ALPHA = 230; // Transparencia del fondo (0=transparente, 255=opaco)
+const COLORREF BORDER_COLOR = RGB(32, 32, 48); // Color del borde normal de las miniaturas
+const COLORREF HOVER_BORDER_COLOR = RGB(80, 180, 255); // Color del borde al pasar el mouse (azul)
+const COLORREF DRAG_BORDER_COLOR = RGB(180, 140, 255); // Color del borde al arrastrar (violeta)
+const COLORREF TITLE_COLOR = RGB(255,255,255); // Color del texto del título de las ventanas (blanco)
+const COLORREF HIGHLIGHT_COLOR = RGB(0, 255, 68); // Color de resaltado (verde)
+
+// Tamaños de elementos de la UI
+const int ICON_SIZE = 27; // Tamaño de los íconos (pin, cerrar, etc.)
+const int SCROLLBAR_HEIGHT = 12; // Alto de la barra de desplazamiento
+
+// Configuración de la grilla
+const int FIXED_COLS = 5; // Número fijo de columnas en la grilla (siempre 5 ventanas por fila)
+
+// Espaciado entre botones
 const int PIN_CLOSE_VERTICAL_GAP = 12; // Espacio vertical entre el botón de pin y el de cerrar
 const int PIN_TO_POS_BUTTON_SIZE = 26; // Tamaño del botón para fijar a posición
 
@@ -73,33 +179,64 @@ const int PIN_TO_POS_BUTTON_SIZE = 26; // Tamaño del botón para fijar a posici
 // Variables globales para el manejo de estado
 // ===============================
 
+// ===============================
+// VARIABLES DE ESTADO DEL OVERLAY PRINCIPAL
+// ===============================
+
 // Paso 3: Declaramos variables globales para manejar el scroll, la selección y el estado de la UI.
 // Esto nos permite mantener el contexto entre eventos de usuario.
 
-static int g_scrollX = 0;
-static int g_scrollMax = 0;
-static bool g_scrolling = false;
-static int g_scrollStartX = 0;
-static int g_scrollStartOffset = 0;
-static int g_scrollY = 0;
-static int g_scrollMaxY = 0;
-static bool g_vscrolling = false;
-static int g_scrollStartY = 0;
-static int g_scrollStartOffsetY = 0;
-static int g_selectedIndex = 0;
+// Variables de desplazamiento horizontal
+static int g_scrollX = 0; // Posición actual del scroll horizontal
+static int g_scrollMax = 0; // Máximo valor del scroll horizontal
+static bool g_scrolling = false; // Indica si se está realizando scroll horizontal
+static int g_scrollStartX = 0; // Posición inicial del mouse al comenzar el scroll horizontal
+static int g_scrollStartOffset = 0; // Offset inicial del scroll horizontal
+
+// Variables de desplazamiento vertical
+static int g_scrollY = 0; // Posición actual del scroll vertical
+static int g_scrollMaxY = 0; // Máximo valor del scroll vertical
+static bool g_vscrolling = false; // Indica si se está realizando scroll vertical
+static int g_scrollStartY = 0; // Posición inicial del mouse al comenzar el scroll vertical
+static int g_scrollStartOffsetY = 0; // Offset inicial del scroll vertical
+
+// Variables de selección
+static int g_selectedIndex = 0; // Índice de la ventana actualmente seleccionada
+
 // Estado de arrastrar y soltar (no usado actualmente, pero preparado para futuras mejoras)
-static bool g_dragging = false;
-static int g_dragIndex = -1;
-static int g_hoverIndex = -1;
-static int g_dragMouseX = 0;
-static int g_dragMouseY = 0;
+static bool g_dragging = false; // Indica si se está arrastrando una ventana
+static int g_dragIndex = -1; // Índice de la ventana que se está arrastrando
+static int g_hoverIndex = -1; // Índice de la ventana sobre la que está el mouse
+static int g_dragMouseX = 0; // Posición X del mouse al arrastrar
+static int g_dragMouseY = 0; // Posición Y del mouse al arrastrar
+
 // Variables globales para el hover de los íconos
-static int g_closeHoverIndex = -1;
-static int g_pinToPosHoverIndex = -1;
+static int g_closeHoverIndex = -1; // Índice de la ventana cuyo botón de cerrar tiene hover
+static int g_pinToPosHoverIndex = -1; // Índice de la ventana cuyo botón de pin tiene hover
+
+// Estado del último hotkey presionado
 static int g_lastHotkey = 0; // 0 = ninguno, 1 = ctrl+numpaddot, 2 = alt+q
 
-int g_overlayWidth = OVERLAY_WIDTH;
-int g_overlayHeight = OVERLAY_HEIGHT;
+// ===============================
+// CONFIGURACIÓN DEL OVERLAY DE ENTRADA DE NÚMEROS (Ctrl)
+// ===============================
+
+// Estado del overlay de entrada de números
+static bool g_ctrlNumberInputActive = false; // Indica si el overlay de entrada de números está activo
+static std::wstring g_ctrlNumberBuffer; // Buffer que almacena el número ingresado por el usuario
+static HWND g_ctrlNumberOverlayHwnd = nullptr; // Handle de la ventana del overlay de entrada de números
+
+// Declaraciones adelantadas para el overlay de entrada de números con Ctrl
+LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+void ShowCtrlNumberOverlay(HWND parent);
+void HideCtrlNumberOverlay();
+
+// ===============================
+// VARIABLES DE CONFIGURACIÓN DINÁMICA DEL OVERLAY PRINCIPAL
+// ===============================
+
+int g_overlayWidth = OVERLAY_WIDTH; // Ancho actual del overlay principal (puede cambiar dinámicamente)
+int g_overlayHeight = OVERLAY_HEIGHT; // Alto actual del overlay principal (puede cambiar dinámicamente)
 
 // ===============================
 // Estructuras para representar ventanas y persistencia
@@ -108,6 +245,9 @@ int g_overlayHeight = OVERLAY_HEIGHT;
 // Paso 4: Creamos una estructura para guardar la información de cada ventana.
 // Esto facilita el manejo de la grilla y la persistencia del estado.
 
+// Estructura que representa una ventana mostrada en el overlay principal.
+// Contiene el handle de la ventana (HWND), el título, el nombre de clase, la miniatura DWM (para mostrar vista previa) y si está fijada en la grilla.
+// Se usa para manejar y dibujar cada ventana en la UI del overlay.
 struct WindowInfo {
     HWND hwnd; // Handle de la ventana
     std::wstring title; // Título de la ventana
@@ -119,6 +259,8 @@ struct WindowInfo {
 // Paso 5: Estructura para guardar el orden y estado de las ventanas en disco.
 // Así el usuario no pierde su configuración al reiniciar.
 
+// Estructura para guardar en disco el estado y orden de una ventana.
+// Permite que el usuario mantenga su configuración (orden, título, clase, si está fijada) entre sesiones del programa.
 struct PersistedWindow {
     HWND hwnd;
     wchar_t title[256];
@@ -133,12 +275,16 @@ struct PersistedWindow {
 // Paso 6: Usamos vectores y mapas para manejar las ventanas activas y las miniaturas.
 // Esto nos permite acceder rápido a la información y actualizar la UI eficientemente.
 
-std::vector<WindowInfo> g_windows;
-std::map<HWND, HTHUMBNAIL> g_thumbnailMap;
-std::vector<PersistedWindow> g_gridOrder;
-HWND g_tooltip = nullptr;
-IVirtualDesktopManager* g_vdm = nullptr;
-bool g_dynamicOrder = false;
+// ===============================
+// VARIABLES GLOBALES DE ALMACENAMIENTO Y ESTADO
+// ===============================
+
+std::vector<WindowInfo> g_windows; // Lista de todas las ventanas disponibles para mostrar en el overlay
+std::map<HWND, HTHUMBNAIL> g_thumbnailMap; // Mapa que relaciona cada ventana con su miniatura DWM
+std::vector<PersistedWindow> g_gridOrder; // Orden persistente de las ventanas guardado en disco
+HWND g_tooltip = nullptr; // Handle del tooltip que se muestra al pasar el mouse sobre las ventanas
+IVirtualDesktopManager* g_vdm = nullptr; // Interfaz para manejar escritorios virtuales de Windows
+bool g_dynamicOrder = false; // Si es true, las ventanas se ordenan dinámicamente; si es false, se mantiene el orden persistente
 
 // ===============================
 // Funciones principales
@@ -422,15 +568,60 @@ void DrawPinToPosIcon(HDC hdc, int x, int y, int size) {
 // Dibuja el número de orden para selección rápida por teclado
 void DrawNumberOverlay(HDC hdc, int x, int y, int number) {
     wchar_t buf[4];
-    wsprintfW(buf, L"%d", number);
-    HFONT hFont = CreateFontW(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
-    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
-    SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(80, 180, 255));
-    TextOutW(hdc, x, y, buf, lstrlenW(buf));
-    SelectObject(hdc, oldFont);
-    DeleteObject(hFont);
+    wsprintfW(buf, L"%d", number); // Format number as string (handles 1-999)
+
+    // Adjust font size and positioning based on number of digits
+    int fontSize;
+    int xOffset;
+    
+    if (number < 10) {
+        // Single digit (1-9)
+        fontSize = 18;
+        xOffset = 6; // Center single digit
+    } 
+    else if (number < 100) {
+        // Two digits (10-99)
+        fontSize = 16;
+        xOffset = 9; // Center two digits
+    }
+    else {
+        // Three digits (100-999) - though unlikely to need this many windows
+        fontSize = 14;
+        xOffset = 12; // Center three digits
+    }
+
+    // Create font with appropriate size
+    HFONT hFont = CreateFontW(fontSize, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, 
+        DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, 
+        CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+    
+    if (hFont) {
+        HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+        SetBkMode(hdc, TRANSPARENT);
+        
+        // Draw with glow effect for better visibility
+        DTTOPTS dttOpts = { sizeof(DTTOPTS) };
+        dttOpts.dwFlags = DTT_TEXTCOLOR | DTT_GLOWSIZE;
+        dttOpts.crText = RGB(80, 180, 255); // Blueish color
+        dttOpts.iGlowSize = 8; // Glow size
+        
+        RECT rc = { x - xOffset, y, x + 50, y + 50 }; // Large enough rect
+        
+        HTHEME hTheme = OpenThemeData(nullptr, L"WINDOW");
+        if (hTheme) {
+            DrawThemeTextEx(hTheme, hdc, 0, 0, buf, -1, 
+                           DT_LEFT | DT_TOP | DT_SINGLELINE, 
+                           &rc, &dttOpts);
+            CloseThemeData(hTheme);
+        } else {
+            // Fallback if themes aren't available
+            SetTextColor(hdc, dttOpts.crText);
+            TextOutW(hdc, x - xOffset, y, buf, lstrlenW(buf));
+        }
+
+        SelectObject(hdc, oldFont);
+        DeleteObject(hFont);
+    }
 }
 
 // Ordena las ventanas: primero las fijadas (en orden de pin), luego las no fijadas
@@ -639,6 +830,9 @@ struct IVirtualDesktopNotificationService : public IUnknown {
     virtual HRESULT STDMETHODCALLTYPE Unregister(DWORD dwCookie) = 0;
 };
 
+// Implementación concreta de la interfaz IVirtualDesktopNotification.
+// Se encarga de manejar el evento CurrentVirtualDesktopChanged y notificar al overlay principal para que actualice la lista de ventanas cuando el usuario cambia de escritorio virtual.
+// También implementa el conteo de referencias (AddRef/Release) y QueryInterface para el sistema COM de Windows.
 class VirtualDesktopNotificationImpl : public IVirtualDesktopNotification {
     LONG m_refCount = 1;
 public:
@@ -670,7 +864,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"BetterAltTab_Unnamed10110Class";
     
     WNDCLASSEX wc = { sizeof(WNDCLASSEX) };
-    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
@@ -691,7 +885,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_overlayHeight = (int)(screenH * 0.80);
     // Crear ventana como overlay para mayor eficiencia
     HWND hwnd = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+        WS_EX_TOPMOST | WS_EX_LAYERED,
         CLASS_NAME, L"BetterAltTab_Unnamed10110",
         WS_POPUP,
         CW_USEDEFAULT, CW_USEDEFAULT, g_overlayWidth, g_overlayHeight,
@@ -825,11 +1019,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
                     SetFocus(hwnd); // Asegura que el overlay reciba las teclas
+                    // Add a small delay to ensure focus takes effect
+                    Sleep(10);
                     g_lastHotkey = (wParam == HOTKEY_ID) ? 1 : 2;
                     // Iniciar timer para Alt+Q para detectar cuando se suelta Alt
                     if (wParam == HOTKEY_ID_ALTQ) {
                         SetTimer(hwnd, 100, 50, NULL); // Timer cada 50ms
                     }
+                    // Start timer to check for numpad keys
+                    SetTimer(hwnd, 200, 50, NULL); // Timer cada 50ms para numpad keys
                 }
                 return 0;
             }
@@ -985,7 +1183,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     RECT pinToPosRect = { cellX + PREVIEW_WIDTH - 28, pinToPosY, cellX + PREVIEW_WIDTH - 28 + PIN_TO_POS_BUTTON_SIZE, pinToPosY + PIN_TO_POS_BUTTON_SIZE };
                     if (x >= pinToPosRect.left && x < pinToPosRect.right && y >= pinToPosRect.top && y < pinToPosRect.bottom) {
                         // Muestra el diálogo de entrada para la posición (1-based)
-                        int pos = ShowNumberInputDialog(hwnd, L"Pin a posición (1-based):");
+                        int pos = ShowNumberInputDialog(hwnd, L"Pin a position (1-based):");
                         if (pos > 0) {
                             // Mueve esta ventana a la posición dada en el grupo fijado
                             // Cuenta las ventanas fijadas
@@ -1165,6 +1363,44 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_KEYDOWN: {
+            // Debug: Log all key presses when overlay is visible
+            if (IsWindowVisible(hwnd)) {
+                wchar_t debugMsg[256];
+                wsprintfW(debugMsg, L"WM_KEYDOWN received: wParam=%d, lParam=%08X\n", wParam, lParam);
+                OutputDebugStringW(debugMsg);
+            }
+            
+            // Handle numpad numbers for window focus
+            if (IsWindowVisible(hwnd) && wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9) {
+                // Debug: Log the key press
+                wchar_t debugMsg[256];
+                wsprintfW(debugMsg, L"Numpad key pressed: %d\n", wParam);
+                OutputDebugStringW(debugMsg);
+                
+                int n = (int)g_windows.size();
+                int digit = wParam - VK_NUMPAD0;
+                int num = -1;
+                if (digit == 0) {
+                    num = 9;
+                } else if (digit <= n) {
+                    num = digit - 1;
+                }
+                if (num >= 0 && num < n) {
+                    g_selectedIndex = num;
+                    g_hoverIndex = num;
+                    InvalidateGrid(hwnd);
+                    AllowSetForegroundWindow(ASFW_ANY);
+                    if (IsIconic(g_windows[num].hwnd)) {
+                        ShowWindow(g_windows[num].hwnd, SW_RESTORE);
+                    }
+                    if (!SetForegroundWindow(g_windows[num].hwnd)) {
+                        SwitchToThisWindow(g_windows[num].hwnd, TRUE);
+                    }
+                    ShowWindow(hwnd, SW_HIDE);
+                    KillTimer(hwnd, 100);
+                    return 0;
+                }
+            }
             // Solo permitir navegación con flechas si Alt está presionado
             if (IsWindowVisible(hwnd) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
                 auto& windows = g_windows;
@@ -1249,6 +1485,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (wParam == VK_ESCAPE) {
                 ShowWindow(hwnd, SW_HIDE);
                 KillTimer(hwnd, 100);
+                KillTimer(hwnd, 200);
                 return 0;
             }
             // Alterna el orden dinámico/persistente con F2
@@ -1326,26 +1563,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         }
         
+     
         case WM_CHAR:
-            if (IsWindowVisible(hwnd)) {
-                int n = (int)g_windows.size();
-                int num = -1;
-                if (wParam >= '1' && wParam <= '9') num = wParam - '1';
-                else if (wParam == '0') num = 9;
-                if (num >= 0 && num < n) {
-                    g_selectedIndex = num;
-                    g_hoverIndex = num;
-                    InvalidateGrid(hwnd);
-                    // Opcionalmente, enfoca inmediatamente:
-                    AllowSetForegroundWindow(ASFW_ANY);
-                    if (IsIconic(g_windows[num].hwnd)) ShowWindow(g_windows[num].hwnd, SW_RESTORE);
-                    if (!SetForegroundWindow(g_windows[num].hwnd)) SwitchToThisWindow(g_windows[num].hwnd, TRUE);
-                    ShowWindow(hwnd, SW_HIDE);
-                    KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
-                }
-                return 0;
-            }
-            break;
+    if (IsWindowVisible(hwnd)) {
+        int n = (int)g_windows.size();
+        // Remove numpad number handling from here
+        if (wParam == VK_ESCAPE) {
+            ShowWindow(hwnd, SW_HIDE);
+            KillTimer(hwnd, 100);
+            KillTimer(hwnd, 200);
+            return 0;
+        }
+    }
+    return 0;
         
         case WM_PAINT: {
             PAINTSTRUCT ps;
@@ -1478,7 +1708,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         DrawPinToPosIcon(memDC, pinX, pinToPosY, PIN_TO_POS_BUTTON_SIZE);
                         // Dibuja el sobre de número debajo del botón #
                         int numberY = pinToPosY + PIN_TO_POS_BUTTON_SIZE + 4;
-                        DrawNumberOverlay(memDC, pinX + PIN_TO_POS_BUTTON_SIZE/2 - 6, numberY, (idx < 9 ? idx + 1 : 0));
+                        DrawNumberOverlay(memDC, pinX + PIN_TO_POS_BUTTON_SIZE/2 - (idx < 9 ? 6 : (idx < 99 ? 9 : 12)), 
+                  numberY, idx + 1);
+
                     } else {
                         const int closeSize = 14;
                         bool closeHover = (idx == g_closeHoverIndex);
@@ -1491,7 +1723,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         DrawCloseIcon(memDC, pinX, pinY, closeSize);
                     }
                     // Dibuja el sobre de número en la esquina superior izquierda de cada miniatura
-                    DrawNumberOverlay(memDC, cellRect.left + 8, cellRect.top + 8, (idx < 9 ? idx + 1 : 0));
+                    DrawNumberOverlay(memDC, cellRect.left + 8, cellRect.top + 8, idx + 1);
+
                 }
             }
             // Dibuja la miniatura arrastrada en la posición del mouse con una sombra
@@ -1575,12 +1808,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (wParam == WA_INACTIVE) {
                 ShowWindow(hwnd, SW_HIDE);
                 KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
+                KillTimer(hwnd, 200); // Limpiar timer de numpad keys
                 return 0;
             }
             break;
         case WM_KILLFOCUS:
             ShowWindow(hwnd, SW_HIDE);
             KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
+            KillTimer(hwnd, 200); // Limpiar timer de numpad keys
             return 0;
         case WM_VIRTUAL_DESKTOP_CHANGED:
             // Reload window list and UI, but do NOT reload persistent data
@@ -1590,6 +1825,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_TIMER:
             // Timer para detectar cuando se suelta Alt después de Alt+Q
             if (wParam == 100 && g_lastHotkey == 2) {
+                // Check for numpad keys using GetAsyncKeyState
+                for (int i = VK_NUMPAD0; i <= VK_NUMPAD9; i++) {
+                    if (GetAsyncKeyState(i) & 0x8000) {
+                        // Numpad key is pressed
+                        int n = (int)g_windows.size();
+                        int digit = i - VK_NUMPAD0;
+                        int num = -1;
+                        if (digit == 0) {
+                            num = 9;
+                        } else if (digit <= n) {
+                            num = digit - 1;
+                        }
+                        if (num >= 0 && num < n) {
+                            g_selectedIndex = num;
+                            g_hoverIndex = num;
+                            InvalidateGrid(hwnd);
+                            AllowSetForegroundWindow(ASFW_ANY);
+                            if (IsIconic(g_windows[num].hwnd)) {
+                                ShowWindow(g_windows[num].hwnd, SW_RESTORE);
+                            }
+                            if (!SetForegroundWindow(g_windows[num].hwnd)) {
+                                SwitchToThisWindow(g_windows[num].hwnd, TRUE);
+                            }
+                            ShowWindow(hwnd, SW_HIDE);
+                            g_lastHotkey = 0;
+                            KillTimer(hwnd, 100);
+                            return 0;
+                        }
+                    }
+                }
+                
                 // Verificar si Alt ya no está presionado
                 if (!(GetAsyncKeyState(VK_MENU) & 0x8000)) {
                     // Enfoca la ventana seleccionada antes de ocultarla
@@ -1610,6 +1876,57 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     return 0;
                 }
             }
+            // Timer para detectar teclas numpad cuando el overlay está visible
+            else if (wParam == 200 && IsWindowVisible(hwnd)) {
+                // Verificar overlay de entrada de números con Ctrl
+                static bool ctrlWasDown = false;
+                bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                if (ctrlDown && !ctrlWasDown && !g_ctrlNumberInputActive) {
+                    // Ctrl presionado: mostrar overlay
+                    g_ctrlNumberInputActive = true;
+                    g_ctrlNumberBuffer.clear();
+                    ShowCtrlNumberOverlay(hwnd);
+                }
+                ctrlWasDown = ctrlDown;
+                
+                // Si el overlay de Ctrl está activo, solo mantenerlo abierto (la entrada la maneja el control de edición)
+                if (g_ctrlNumberInputActive && g_ctrlNumberOverlayHwnd) {
+                    // El control de edición maneja toda la entrada, así que no necesitamos hacer nada aquí
+                }
+                
+                // Original numpad key handling (only if Ctrl overlay is not active)
+                if (!g_ctrlNumberInputActive) {
+                    for (int i = VK_NUMPAD0; i <= VK_NUMPAD9; i++) {
+                        if (GetAsyncKeyState(i) & 0x8000) {
+                            // Numpad key is pressed
+                            int n = (int)g_windows.size();
+                            int digit = i - VK_NUMPAD0;
+                            int num = -1;
+                            if (digit == 0) {
+                                num = 9;
+                            } else if (digit <= n) {
+                                num = digit - 1;
+                            }
+                            if (num >= 0 && num < n) {
+                                g_selectedIndex = num;
+                                g_hoverIndex = num;
+                                InvalidateGrid(hwnd);
+                                AllowSetForegroundWindow(ASFW_ANY);
+                                if (IsIconic(g_windows[num].hwnd)) {
+                                    ShowWindow(g_windows[num].hwnd, SW_RESTORE);
+                                }
+                                if (!SetForegroundWindow(g_windows[num].hwnd)) {
+                                    SwitchToThisWindow(g_windows[num].hwnd, TRUE);
+                                }
+                                ShowWindow(hwnd, SW_HIDE);
+                                KillTimer(hwnd, 100);
+                                KillTimer(hwnd, 200);
+                                return 0;
+                            }
+                        }
+                    }
+                }
+            }
             break;
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -1628,10 +1945,10 @@ void UnregisterAllThumbnails() {
 }
 
 // ===============================
-// Logging para depuración
+// VARIABLES DE LOGGING Y DEPURACIÓN
 // ===============================
-// Mutex para escritura de logs (debug)
-std::mutex g_logMutex;
+
+std::mutex g_logMutex; // Mutex para proteger la escritura concurrente de logs de depuración
 // Escribe mensajes de depuración en un archivo
 void LogDebugMessage(const wchar_t* msg) {
     std::lock_guard<std::mutex> lock(g_logMutex);
@@ -1640,4 +1957,197 @@ void LogDebugMessage(const wchar_t* msg) {
         logFile << msg;
         logFile.flush();
     }
+}
+
+// ===============================
+// Extra overlay for Ctrl+number input
+// ===============================
+
+// Forward declaration
+LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Procedimiento de subclase para el control de edición
+WNDPROC g_oldEditProc = nullptr;
+
+LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_RETURN) {
+            // Enter presionado - obtener texto y enfocar ventana
+            wchar_t buffer[16];
+            GetWindowTextW(hwnd, buffer, 16);
+            g_ctrlNumberBuffer = buffer;
+            
+            // Debug: Registrar el número
+            wchar_t debugMsg[256];
+            wsprintfW(debugMsg, L"Enter presionado, número: %s\n", g_ctrlNumberBuffer.c_str());
+            OutputDebugStringW(debugMsg);
+            
+            int n = (int)g_windows.size();
+            int num = 0;
+            if (!g_ctrlNumberBuffer.empty()) {
+                try {
+                    num = std::stoi(g_ctrlNumberBuffer);
+                } catch (...) { num = 0; }
+            }
+            
+            // Debug: Registrar el número parseado y cantidad de ventanas
+            wsprintfW(debugMsg, L"Número parseado: %d, total de ventanas: %d\n", num, n);
+            OutputDebugStringW(debugMsg);
+            
+            if (num >= 1 && num <= n) {
+                int idx = num - 1;
+                AllowSetForegroundWindow(ASFW_ANY);
+                if (IsIconic(g_windows[idx].hwnd)) {
+                    ShowWindow(g_windows[idx].hwnd, SW_RESTORE);
+                }
+                if (!SetForegroundWindow(g_windows[idx].hwnd)) {
+                    SwitchToThisWindow(g_windows[idx].hwnd, TRUE);
+                }
+                
+                // Debug: Registrar éxito
+                OutputDebugStringW(L"Ventana enfocada exitosamente\n");
+            } else {
+                // Debug: Registrar fallo
+                wsprintfW(debugMsg, L"Número inválido: %d (rango válido: 1-%d)\n", num, n);
+                OutputDebugStringW(debugMsg);
+            }
+            // Cerrar la ventana cuando se presiona Enter
+            DestroyWindow(GetParent(hwnd));
+            return 0;
+        }
+        else if (wParam == VK_ESCAPE) {
+            // Escape presionado - cerrar la ventana
+            DestroyWindow(GetParent(hwnd));
+            return 0;
+        }
+    }
+    return CallWindowProc(g_oldEditProc, hwnd, msg, wParam, lParam);
+}
+
+void ShowCtrlNumberOverlay(HWND parent) {
+    if (g_ctrlNumberOverlayHwnd) return;
+    WNDCLASSW wc = {0};
+    wc.lpfnWndProc = CtrlNumberOverlayProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"CtrlNumberOverlayClass";
+    wc.hbrBackground = nullptr;
+    RegisterClassW(&wc);
+    RECT rc;
+    GetWindowRect(parent, &rc);
+    
+    // ===============================
+    // CONFIGURACIÓN DE TAMAÑO Y POSICIÓN DEL OVERLAY DE ENTRADA
+    // ===============================
+    int width = 80, height = 44; // Tamaño del overlay de entrada de números (ancho x alto en píxeles)
+    int x = rc.left + ((rc.right - rc.left) - width) / 2; // Posición X centrada respecto al overlay principal
+    int y = rc.top + ((rc.bottom - rc.top) - height) / 2; // Posición Y centrada respecto al overlay principal
+    g_ctrlNumberOverlayHwnd = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_LAYERED,
+        wc.lpszClassName, L"",
+        WS_POPUP | WS_BORDER,
+        x, y, width, height,
+        nullptr, nullptr, wc.hInstance, nullptr); // Sin ventana padre
+    SetLayeredWindowAttributes(g_ctrlNumberOverlayHwnd, 0, 255, LWA_ALPHA); // Negro puro, completamente opaco
+    
+    // Esquinas redondeadas
+    HRGN rgn = CreateRoundRectRgn(0, 0, width, height, 16, 16);
+    SetWindowRgn(g_ctrlNumberOverlayHwnd, rgn, TRUE);
+    
+    // ===============================
+    // CONFIGURACIÓN DEL CONTROL DE EDICIÓN
+    // ===============================
+    
+    // Crear control de edición para entrada de números, centrado, texto blanco, fondo negro
+    HWND hEdit = CreateWindowExW(
+        0, // Sin estilo extendido
+        L"EDIT", L"", // Clase EDIT, sin texto inicial
+        WS_CHILD | WS_VISIBLE | ES_CENTER | ES_NUMBER, // Estilos: hijo, visible, texto centrado, solo números
+        4, 4, width-8, height-8, // Posición y tamaño del control de edición (con margen de 4px)
+        g_ctrlNumberOverlayHwnd, (HMENU)1001, wc.hInstance, nullptr);
+    
+    // Configuración de la fuente del control de edición
+    HFONT hFont = CreateFontW(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+    SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE); // Aplicar fuente al control
+    
+    // Configuración adicional del control de edición
+    SendMessage(hEdit, EM_SETSEL, 0, -1); // Seleccionar todo el texto inicial
+    SendMessage(hEdit, EM_SETMARGINS, EC_LEFTMARGIN|EC_RIGHTMARGIN, MAKELPARAM(2,2)); // Márgenes internos de 2px
+    SendMessage(hEdit, EM_SETLIMITTEXT, 3, 0); // Limitar a máximo 3 caracteres (para números del 1-999)
+    // Subclasificar el control de edición para manejar la tecla Enter
+    g_oldEditProc = (WNDPROC)SetWindowLongPtr(hEdit, GWLP_WNDPROC, (LONG_PTR)EditSubclassProc);
+    ShowWindow(g_ctrlNumberOverlayHwnd, SW_SHOW);
+    SetForegroundWindow(g_ctrlNumberOverlayHwnd); // Traer al frente
+    SetFocus(hEdit); // Enfocar el control de edición
+    UpdateWindow(g_ctrlNumberOverlayHwnd);
+}
+
+void HideCtrlNumberOverlay() {
+    if (g_ctrlNumberOverlayHwnd) {
+        DestroyWindow(g_ctrlNumberOverlayHwnd);
+        g_ctrlNumberOverlayHwnd = nullptr;
+    }
+    g_ctrlNumberInputActive = false;
+    g_ctrlNumberBuffer.clear();
+}
+
+LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        // Fondo negro puro OLED, sin borde, sin texto
+        HBRUSH bgBrush = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(hdc, &rc, bgBrush);
+        DeleteObject(bgBrush);
+        // Dibujar borde blanco para visibilidad
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(255,255,255));
+        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+        HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+        RoundRect(hdc, 0, 0, rc.right, rc.bottom, 16, 16);
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldBrush);
+        DeleteObject(pen);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_CTLCOLOREDIT: {
+        HDC hdcEdit = (HDC)wParam;
+        SetBkColor(hdcEdit, RGB(0,0,0));
+        SetTextColor(hdcEdit, RGB(255,255,255));
+        static HBRUSH hBrush = NULL;
+        if (!hBrush) hBrush = CreateSolidBrush(RGB(0,0,0));
+        return (LRESULT)hBrush;
+    }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_KEYDOWN:
+        if (wParam == VK_ESCAPE) {
+            // Cerrar la ventana cuando se presiona Escape
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        break;
+    case WM_DESTROY:
+        // Limpiar cuando se destruye la ventana
+        g_ctrlNumberInputActive = false;
+        g_ctrlNumberOverlayHwnd = nullptr;
+        g_ctrlNumberBuffer.clear();
+        break;
+    case WM_COMMAND:
+        if (LOWORD(wParam) == 1001 && HIWORD(wParam) == EN_UPDATE) {
+            HWND hEdit = GetDlgItem(hwnd, 1001);
+            if (hEdit) {
+                wchar_t buffer[16];
+                GetWindowTextW(hEdit, buffer, 16);
+                g_ctrlNumberBuffer = buffer;
+            }
+        }
+        break;
+    default:
+        return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
 }

@@ -1,57 +1,88 @@
-# BetterAltTab_Unnamed10110 v2
+# BetterAltTab_Unnamed10110 v3
 
-A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 2** brings even more power-user features, robust tray integration, seamless virtual desktop support, and a beautiful, efficient overlay.
-
----
-
-## 🚀 What's New in v2
-
-- **Persistent Tray Icon**: The tray icon is always visible and auto-recovers after Explorer restarts or crashes.
-- **Robust Alt+Q Navigation**: Open the overlay with Alt+Q, keep holding Alt, and use arrow keys to navigate. Release Alt to focus the selected window. Navigation only works while Alt is held, for a true power-user workflow.
-- **Circular Navigation**: Arrow navigation wraps around—pressing right on the last window jumps to the first, and left on the first jumps to the last.
-- **Efficient Overlay**: Uses a layered, double-buffered, rounded window with true transparency for smooth, flicker-free visuals and minimal CPU usage.
-- **Virtual Desktop Awareness**: Instantly updates when you switch virtual desktops, always showing the correct windows.
-- **Persistent Z-Order & Pinning**: Pin windows, reorder them, and your layout persists across sessions and even after Explorer crashes.
-- **Quick Actions**: Close, pin, and move-to-position actions for each window, accessible via mouse or keyboard.
-- **OLED Black Theme**: Overlay and popups use a true black background for perfect OLED displays.
-- **Minimal Dependencies**: Pure Win32 API, no Qt/.NET/third-party frameworks.
-- **Super Fast**: Instant overlay, no lag, optimized for large numbers of windows.
+A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 3** introduces advanced number input overlay, comprehensive Spanish documentation, and enhanced user experience features.
 
 ---
 
-## Demostration
-```
-# Quick commented guide:
-- Press atl+q to open the overlay, with F2 you can change between dynamic mode and persistence z-order mode (you will notice the difference on the button 
-right to the thumbnails)
-- When cycling with alt+q, and you decide what window focus, just press again alt and it will focus that window (old behavior).
-- Ctrl+Numpaddot has the same behavior as alt+tab (alt+q is an upgraded behavior)
-```
+## 🚀 What's New in v3
 
-- Dynamic Mode (Classic Mode)
-  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/04c8c545-55e2-4e63-b75d-eb8fc92b1970" />
-- Z-order Persistence Mode:
--  You can pin multiple windows at the beginning and order then, also it mantains the z-order, independently from the process explorer.exe crashing or not.
-  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/a6f18638-2851-4243-b41b-93dd0c2c8e3a" />
-- You can pin as many as you want, they always keep they position unless you changed, you can temrinate them, and give then a pinned gerarquy order:
-- You also have the option to use shortcuts to acceso to the most importants windows pinned as important with jus the number in the window position
-  <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/23789cc3-7a79-4c8c-a394-902621cb7a9e" />
+### 🎯 Advanced Number Input System
+- **Ctrl+Number Overlay**: When the main overlay is open, press and hold Ctrl to activate a minimalistic number input overlay
+- **Precise Window Selection**: Type any number (1 to N, where N is the number of windows) and press Enter to instantly focus that window
+- **OLED Black Design**: The number input overlay features a sleek black background with white text and rounded corners
+- **Escape to Cancel**: Press Escape to close the number input overlay without selecting a window
+- **Standalone Window**: The input overlay operates as an independent window for better focus management
+
+### 🌍 Comprehensive Spanish Documentation
+- **Paraguayan Spanish Comments**: All configuration variables, defines, pragmas, includes, and functions are documented in Spanish
+- **Detailed Function Documentation**: Every function, method, and class includes explanatory comments about its purpose and usage
+- **Organized Code Structure**: Clear sections for overlay configuration, state variables, and utility functions
+- **Enhanced Maintainability**: Code is now more accessible to Spanish-speaking developers
+
+### ⚡ Enhanced User Experience
+- **Dual Input Methods**: 
+  - Traditional numpad keys (1-9, 0 for 10th) for quick selection
+  - New Ctrl+number overlay for precise input of any window number
+- **Improved Visual Feedback**: Better hover states and visual indicators
+- **Optimized Performance**: Enhanced timer-based input detection for reliable numpad key handling
+- **Better Error Handling**: Robust input validation and graceful fallbacks
+
+### 🔧 Technical Improvements
+- **Subclassed Edit Controls**: Direct message handling for Enter/Escape keys in the number input overlay
+- **Enhanced Timer System**: Improved WM_TIMER handling for both numpad detection and Ctrl overlay management
+- **Better Resource Management**: Proper cleanup of overlay windows and edit controls
+- **Debug Logging**: Enhanced debugging capabilities with detailed logging of user interactions
 
 ---
 
-## 🖥️ How to Use
+## 🎮 How to Use
 
-### Hotkeys
-- **Open Overlay**: `Ctrl+NumpadDot` or `Alt+Q`
-- **Navigate**: While holding Alt, use arrow keys or Tab to move selection (navigation only works while Alt is held)
-- **Cycle Selection**: Keep holding the modifier and press the hotkey again
-- **Select by Number**: Press `1`-`9` or `0` (for 10th) to instantly select/focus a window
-- **Close Overlay**: Release the modifier, press `Esc`, or click outside
+### Main Overlay (Alt+Q)
+- **Open Overlay**: Press `Alt+Q` to open the main window switcher
+- **Navigate**: While holding Alt, use arrow keys to move selection
+- **Quick Selection**: Press numpad keys `1`-`9` or `0` (for 10th window) for instant selection
+- **Close**: Release Alt to focus selected window, or press `Esc`
 
-### Quick Actions (on hover)
-- **Close**: Click the `X` icon
-- **Pin/Unpin**: Click the pin icon
-- **Pin to Position**: Click the `#` icon, enter a number, press Enter
+### Advanced Number Input (Ctrl)
+- **Activate**: With main overlay open, press and hold `Ctrl`
+- **Input Number**: Type any number from 1 to N (where N is total windows)
+- **Confirm**: Press `Enter` to focus the selected window
+- **Cancel**: Press `Escape` to close without selecting
+- **Visual**: Minimalistic black overlay with white text and rounded corners
+
+### Quick Actions
+- **Close Window**: Click the `X` icon on any window thumbnail
+- **Pin/Unpin**: Click the pin icon to pin/unpin a window
+- **Pin to Position**: Click the `#` icon to assign a specific position number
+
+### Mode Switching
+- **Toggle Modes**: Press `F2` to switch between Dynamic Order and Persistent Z-Order modes
+- **Visual Indicator**: The button appearance changes to show current mode
+
+---
+
+## 🖥️ Features
+
+### Core Functionality
+- **Ultra-Fast Overlay**: Instant display with smooth animations
+- **Live Window Previews**: Real-time thumbnails using DWM API
+- **Virtual Desktop Support**: Automatically updates when switching desktops
+- **Persistent Layout**: Window order and pin states saved between sessions
+- **Circular Navigation**: Arrow keys wrap around window list
+
+### Advanced Features
+- **Dual Input Systems**: Both numpad and precise number input
+- **OLED-Optimized Theme**: True black backgrounds for OLED displays
+- **Rounded Corners**: Modern UI with custom window regions
+- **Transparency Effects**: Layered windows with alpha blending
+- **Tray Integration**: Persistent system tray icon with context menu
+
+### Technical Excellence
+- **Pure Win32 API**: No external dependencies or frameworks
+- **Memory Efficient**: Optimized for handling large numbers of windows
+- **Thread Safe**: Proper synchronization for multi-threaded operations
+- **Error Resilient**: Graceful handling of window state changes
+- **Cross-Desktop**: Works seamlessly across virtual desktops
 
 ---
 
@@ -62,74 +93,133 @@ right to the thumbnails)
 - Visual Studio 2019/2022 or MSVC toolchain
 - CMake 3.10+
 
-### Steps
-1. Clone the repository:
+### Build Steps
+1. **Clone Repository**:
    ```sh
    git clone <your-repo-url>
    cd BetterAltTab_Unnamed10110
    ```
-2. Configure and build:
+
+2. **Configure and Build**:
    ```sh
    cmake -S . -B build
    cmake --build build --config Release
    ```
-3. Run:
+
+3. **Run Application**:
    ```sh
    build/Release/BetterAltTab_Unnamed10110.exe
    ```
 
----
-
-## ⚙️ Configuration & Customization
-- **Persistent Z-Order**: Window order and pin state are saved in `grid_order.bin`.
-- **Overlay Size**: Defaults to 88% screen width, 80% height; resizable at runtime.
-- **Theme**: OLED black by default; easily customizable in `main.cpp`.
-- **Hotkeys**: Change in `main.cpp` (`RegisterHotKey` calls).
+### Auto-Start Setup
+The application automatically registers itself to run as administrator on login for optimal functionality.
 
 ---
 
-## 🧩 Technical Details & Libraries Used
-- **Language**: C++17, pure Win32 API
-- **Libraries/Headers**:
-  - `<windows.h>`: Core Win32 API
-  - `<dwmapi.h>`: DWM thumbnails (live previews)
-  - `<shobjidl.h>`, `<shellapi.h>`: Virtual desktop and tray icon management
-  - `<commctrl.h>`, `<uxtheme.h>`: Modern UI, theme, and controls
-  - `<objbase.h>`: COM for virtual desktop notifications
-  - `<psapi.h>`: Process info for window icons
-  - `<shlwapi.h>`, `<strsafe.h>`: Utility APIs
-- **Techniques**:
-  - **Layered, Rounded Overlay**: Uses `WS_EX_LAYERED`, `SetLayeredWindowAttributes`, and custom region for a modern, transparent overlay
-  - **Double Buffering**: Off-screen drawing for flicker-free UI
-  - **DWM Thumbnails**: `DwmRegisterThumbnail` for live window previews
-  - **Persistent Tray Icon**: Handles `WM_TASKBARCREATED` to restore the icon after Explorer restarts
-  - **Virtual Desktop Notifications**: Implements `IVirtualDesktopNotification` via COM to update overlay on desktop switch
-  - **Hotkey Registration**: Uses `RegisterHotKey` for global shortcuts
-  - **Custom Input Handling**: Full keyboard and mouse support, including Alt+arrow navigation, number selection, and quick actions
-  - **Persistence**: Custom binary format for window order and pin state
+## ⚙️ Configuration
+
+### Overlay Settings
+- **Size**: Defaults to 88% screen width, 80% height
+- **Colors**: OLED black theme with customizable accent colors
+- **Transparency**: Adjustable alpha blending for background
+- **Grid Layout**: Fixed 5-column layout with customizable spacing
+
+### Input Configuration
+- **Numpad Keys**: Direct 1-9, 0 for 10th window selection
+- **Ctrl Overlay**: Customizable size and position
+- **Hotkeys**: Configurable global shortcuts in main.cpp
+
+### Persistence
+- **Window Order**: Saved in `grid_order.bin`
+- **Pin States**: Preserved across sessions
+- **Settings**: Runtime configuration changes persist
 
 ---
 
-## 🌟 Strong Points
-- **Blazing Fast**: Instant overlay, no lag, even with 50+ windows
-- **No Bloat**: No Qt, .NET, or heavy dependencies
-- **Modern Look**: Rounded corners, transparency, OLED black, smooth UI
-- **Power User Features**: Pinning, persistent order, search, keyboard shortcuts, quick actions
-- **Portable**: Single EXE, no installer needed
-- **Open Source**: Easily hackable and extensible
+## 🧩 Technical Architecture
+
+### Core Components
+- **Window Manager**: Handles window enumeration and state management
+- **Overlay System**: Layered window with custom painting
+- **Input Handler**: Dual input system for keyboard and mouse
+- **Persistence Layer**: Binary file storage for user preferences
+- **Notification System**: Virtual desktop and system event handling
+
+### Key Technologies
+- **Win32 API**: Core Windows functionality
+- **DWM API**: Desktop Window Manager for thumbnails
+- **COM Interfaces**: Virtual desktop notifications
+- **GDI+**: Custom drawing and UI elements
+- **Shell API**: Tray icon and system integration
+
+### Performance Optimizations
+- **Double Buffering**: Flicker-free rendering
+- **Lazy Loading**: Thumbnails loaded on-demand
+- **Efficient Sorting**: Optimized window ordering algorithms
+- **Memory Management**: Proper resource cleanup and reuse
+
+---
+
+## 🌟 Key Advantages
+
+### Performance
+- **Instant Response**: No lag or delay in overlay display
+- **Low Resource Usage**: Minimal CPU and memory footprint
+- **Smooth Animations**: Hardware-accelerated rendering
+- **Scalable**: Handles 50+ windows efficiently
+
+### User Experience
+- **Intuitive Interface**: Familiar Alt+Tab workflow with enhancements
+- **Flexible Input**: Multiple ways to select windows
+- **Visual Feedback**: Clear indicators for all actions
+- **Accessibility**: Keyboard and mouse support
+
+### Developer Experience
+- **Well Documented**: Comprehensive Spanish comments
+- **Modular Design**: Clean separation of concerns
+- **Extensible**: Easy to add new features
+- **Maintainable**: Clear code structure and organization
 
 ---
 
 ## 📝 License
-MIT
+MIT License - See LICENSE file for details
 
 ---
 
-## 🙏 Credits
-- Inspired by Windows 11 Alt+Tab, PowerToys, and the open-source community.
-- Contact: Unnamed10110 - trojan.v6@gmail.com / sergiobritos10110@gmail.com
+## 🙏 Credits & Contact
+- **Developer**: Unnamed10110
+- **Email**: trojan.v6@gmail.com / sergiobritos10110@gmail.com
+- **Inspiration**: Windows 11 Alt+Tab, PowerToys, and open-source community
 
 ---
 
-## 💬 Feedback & Contributions
-Pull requests, issues, and suggestions are welcome! 
+## 💬 Contributing
+We welcome contributions! Please feel free to:
+- Submit bug reports and feature requests
+- Contribute code improvements
+- Suggest enhancements
+- Help with documentation
+
+---
+
+## 🔄 Version History
+
+### v3.0 (Current)
+- Added Ctrl+number input overlay
+- Comprehensive Spanish documentation
+- Enhanced input handling
+- Improved visual design
+- Better error handling
+
+### v2.0
+- Persistent tray icon
+- Virtual desktop support
+- Enhanced navigation
+- OLED theme
+- Performance improvements
+
+### v1.0
+- Basic Alt+Tab replacement
+- Window thumbnails
+- Hotkey support 
