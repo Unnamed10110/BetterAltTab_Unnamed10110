@@ -79,7 +79,7 @@ void LogDebugMessage(const wchar_t* msg);
 
 
 
-*/ */
+
 
 
 
