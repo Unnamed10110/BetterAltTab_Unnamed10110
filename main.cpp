@@ -26,6 +26,8 @@
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "msimg32.lib") // Para AlphaBlend
+#pragma comment(lib, "msimg32.lib") // Para AlphaBlend
 
 // ===============================
 // Definiciones y constantes globales
@@ -661,6 +663,8 @@ public:
     }
 };
 
+UINT WM_TASKBARCREATED = 0;
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     RegisterRunAsAdminOnLogin();
     const wchar_t CLASS_NAME[] = L"BetterAltTab_Unnamed10110Class";
@@ -685,8 +689,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     int screenH = rc.bottom - rc.top;
     g_overlayWidth = (int)(screenW * 0.88);
     g_overlayHeight = (int)(screenH * 0.80);
+    // Crear ventana como overlay para mayor eficiencia
     HWND hwnd = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
         CLASS_NAME, L"BetterAltTab_Unnamed10110",
         WS_POPUP,
         CW_USEDEFAULT, CW_USEDEFAULT, g_overlayWidth, g_overlayHeight,
@@ -694,6 +699,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     
     if (!hwnd) return 0;
     g_mainHwnd = hwnd; // Store for notification
+    
+    // Configurar ventana como overlay eficiente
+    SetLayeredWindowAttributes(hwnd, 0, OVERLAY_BG_ALPHA, LWA_ALPHA);
+    
     // Establece una región redondeada para la ventana de superposición
     HRGN rgn = CreateRoundRectRgn(0, 0, g_overlayWidth, g_overlayHeight, 60, 60);
     SetWindowRgn(hwnd, rgn, FALSE);
@@ -734,6 +743,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         pServiceProvider->Release();
     }
     
+    WM_TASKBARCREATED = RegisterWindowMessageW(L"TaskbarCreated");
+    
     MSG msg = {};
     while (GetMessage(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
@@ -759,6 +770,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static int lastTooltipIdx = -1;
     
+    // Manejo especial para restaurar el icono de la bandeja si Explorer se reinicia
+    if (msg == WM_TASKBARCREATED) {
+        Shell_NotifyIcon(NIM_ADD, &nid);
+        return 0;
+    }
     switch (msg) {
         case WM_TRAYICON:
             if (lParam == WM_RBUTTONUP) {
@@ -808,7 +824,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     RegisterThumbnails(hwnd, g_windows);
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
+                    SetFocus(hwnd); // Asegura que el overlay reciba las teclas
                     g_lastHotkey = (wParam == HOTKEY_ID) ? 1 : 2;
+                    // Iniciar timer para Alt+Q para detectar cuando se suelta Alt
+                    if (wParam == HOTKEY_ID_ALTQ) {
+                        SetTimer(hwnd, 100, 50, NULL); // Timer cada 50ms
+                    }
                 }
                 return 0;
             }
@@ -829,7 +850,30 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
                 ShowWindow(hwnd, SW_HIDE);
                 g_lastHotkey = 0;
+                KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 return 0;
+            }
+            // Manejo adicional para Alt+Q: si se suelta Q mientras Alt está presionado
+            else if (IsWindowVisible(hwnd) && g_lastHotkey == 2 && wParam == 'Q') {
+                // Verificar si Alt sigue presionado
+                if (GetAsyncKeyState(VK_MENU) & 0x8000) {
+                    // Enfoca la ventana seleccionada antes de ocultarla
+                    auto& windows = g_windows;
+                    int n = (int)windows.size();
+                    if (n > 0 && g_selectedIndex >= 0 && g_selectedIndex < n) {
+                        if (IsIconic(windows[g_selectedIndex].hwnd)) {
+                            ShowWindow(windows[g_selectedIndex].hwnd, SW_RESTORE);
+                        }
+                        AllowSetForegroundWindow(ASFW_ANY);
+                        if (!SetForegroundWindow(windows[g_selectedIndex].hwnd)) {
+                            SwitchToThisWindow(windows[g_selectedIndex].hwnd, TRUE);
+                        }
+                    }
+                    ShowWindow(hwnd, SW_HIDE);
+                    g_lastHotkey = 0;
+                    KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
+                    return 0;
+                }
             }
             break;
         case WM_SYSKEYUP:
@@ -848,6 +892,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
                 ShowWindow(hwnd, SW_HIDE);
                 g_lastHotkey = 0;
+                KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 return 0;
             }
             break;
@@ -1120,82 +1165,90 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_KEYDOWN: {
-            auto& windows = g_windows;
-            SortWindowsForGrid(windows);
-            int n = (int)windows.size();
-            if (n > 0) {
-                int cols = FIXED_COLS;
-                int rows = (n + cols - 1) / cols;
-                int row = g_selectedIndex / cols;
-                int col = g_selectedIndex % cols;
-                int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X;
-                int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y;
-                int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
-                int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
-                int startX = GRID_PADDING_X - g_scrollX;
-                int startY = GRID_PADDING_Y - g_scrollY;
-                auto scrollToSelected = [&]() {
-                    int selX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
-                    int selY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
-                    // Horizontal
-                    if (selX < GRID_PADDING_X) g_scrollX = max(0, g_scrollX - (GRID_PADDING_X - selX));
-                    else if (selX + PREVIEW_WIDTH > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + PREVIEW_WIDTH - (g_overlayWidth - GRID_PADDING_X)));
-                    // Vertical
-                    if (selY < GRID_PADDING_Y) g_scrollY = max(0, g_scrollY - (GRID_PADDING_Y - selY));
-                    else if (selY + PREVIEW_HEIGHT > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + PREVIEW_HEIGHT - (g_overlayHeight - GRID_PADDING_Y)));
-                };
-                if (wParam == VK_TAB) {
-                    if (GetKeyState(VK_SHIFT) & 0x8000) {
-                        g_selectedIndex = (g_selectedIndex - 1 + n) % n;
-                    } else {
-                        g_selectedIndex = (g_selectedIndex + 1) % n;
+            // Solo permitir navegación con flechas si Alt está presionado
+            if (IsWindowVisible(hwnd) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+                auto& windows = g_windows;
+                SortWindowsForGrid(windows);
+                int n = (int)windows.size();
+                if (n > 0) {
+                    int cols = FIXED_COLS;
+                    int rows = (n + cols - 1) / cols;
+                    int row = g_selectedIndex / cols;
+                    int col = g_selectedIndex % cols;
+                    int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X;
+                    int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y;
+                    int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
+                    int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+                    int startX = GRID_PADDING_X - g_scrollX;
+                    int startY = GRID_PADDING_Y - g_scrollY;
+                    auto scrollToSelected = [&]() {
+                        int selX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
+                        int selY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
+                        // Horizontal
+                        if (selX < GRID_PADDING_X) g_scrollX = max(0, g_scrollX - (GRID_PADDING_X - selX));
+                        else if (selX + PREVIEW_WIDTH > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + PREVIEW_WIDTH - (g_overlayWidth - GRID_PADDING_X)));
+                        // Vertical
+                        if (selY < GRID_PADDING_Y) g_scrollY = max(0, g_scrollY - (GRID_PADDING_Y - selY));
+                        else if (selY + PREVIEW_HEIGHT > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + PREVIEW_HEIGHT - (g_overlayHeight - GRID_PADDING_Y)));
+                    };
+                    if (wParam == VK_TAB) {
+                        if (GetKeyState(VK_SHIFT) & 0x8000) {
+                            g_selectedIndex = (g_selectedIndex - 1 + n) % n;
+                        } else {
+                            g_selectedIndex = (g_selectedIndex + 1) % n;
+                        }
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_RETURN) {
+                        if (g_selectedIndex >= 0 && g_selectedIndex < n) {
+                            SetForegroundWindow(windows[g_selectedIndex].hwnd);
+                            ShowWindow(hwnd, SW_HIDE);
+                            KillTimer(hwnd, 100);
+                        }
+                        return 0;
+                    } else if (wParam == VK_LEFT) {
+                        if (col > 0) g_selectedIndex--;
+                        else if (row > 0) g_selectedIndex = (row - 1) * cols + (cols - 1);
+                        else g_selectedIndex = n - 1; // Circular: si es el primero, va al último
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_RIGHT) {
+                        if (col < cols - 1 && g_selectedIndex + 1 < n) g_selectedIndex++;
+                        else if (row < rows - 1) g_selectedIndex = (row + 1) * cols;
+                        else g_selectedIndex = 0; // Circular: si es el último, va al primero
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_UP) {
+                        if (row > 0) g_selectedIndex -= cols;
+                        else g_selectedIndex = (col < n % cols) ? (rows - 1) * cols + col : (rows - 2) * cols + col;
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_DOWN) {
+                        if (row < rows - 1 && g_selectedIndex + cols < n) g_selectedIndex += cols;
+                        else g_selectedIndex = col;
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
                     }
-                    g_hoverIndex = g_selectedIndex;
-                    scrollToSelected();
-                    InvalidateGrid(hwnd);
-                    return 0;
-                } else if (wParam == VK_RETURN) {
-                    if (g_selectedIndex >= 0 && g_selectedIndex < n) {
-                        SetForegroundWindow(windows[g_selectedIndex].hwnd);
-                        ShowWindow(hwnd, SW_HIDE);
-                    }
-                    return 0;
-                } else if (wParam == VK_LEFT) {
-                    if (col > 0) g_selectedIndex--;
-                    else if (row > 0) g_selectedIndex = (row - 1) * cols + (cols - 1);
-                    g_selectedIndex = (g_selectedIndex + n) % n;
-                    g_hoverIndex = g_selectedIndex;
-                    scrollToSelected();
-                    InvalidateGrid(hwnd);
-                    return 0;
-                } else if (wParam == VK_RIGHT) {
-                    if (col < cols - 1 && g_selectedIndex + 1 < n) g_selectedIndex++;
-                    else if (row < rows - 1) g_selectedIndex = (row + 1) * cols;
-                    g_selectedIndex = (g_selectedIndex + n) % n;
-                    g_hoverIndex = g_selectedIndex;
-                    scrollToSelected();
-                    InvalidateGrid(hwnd);
-                    return 0;
-                } else if (wParam == VK_UP) {
-                    if (row > 0) g_selectedIndex -= cols;
-                    else g_selectedIndex = (col < n % cols) ? (rows - 1) * cols + col : (rows - 2) * cols + col;
-                    g_selectedIndex = (g_selectedIndex + n) % n;
-                    g_hoverIndex = g_selectedIndex;
-                    scrollToSelected();
-                    InvalidateGrid(hwnd);
-                    return 0;
-                } else if (wParam == VK_DOWN) {
-                    if (row < rows - 1 && g_selectedIndex + cols < n) g_selectedIndex += cols;
-                    else g_selectedIndex = col;
-                    g_selectedIndex = (g_selectedIndex + n) % n;
-                    g_hoverIndex = g_selectedIndex;
-                    scrollToSelected();
-                    InvalidateGrid(hwnd);
-                    return 0;
                 }
             }
+            // Si no está Alt presionado, ignorar las flechas
             if (wParam == VK_ESCAPE) {
                 ShowWindow(hwnd, SW_HIDE);
+                KillTimer(hwnd, 100);
                 return 0;
             }
             // Alterna el orden dinámico/persistente con F2
@@ -1204,6 +1257,71 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]");
                 InvalidateGrid(hwnd);
                 return 0;
+            }
+            break;
+        }
+        
+        case WM_SYSKEYDOWN: {
+            // Permitir navegación con flechas si Alt está presionado (igual que en WM_KEYDOWN)
+            if (IsWindowVisible(hwnd) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+                auto& windows = g_windows;
+                SortWindowsForGrid(windows);
+                int n = (int)windows.size();
+                if (n > 0) {
+                    int cols = FIXED_COLS;
+                    int rows = (n + cols - 1) / cols;
+                    int row = g_selectedIndex / cols;
+                    int col = g_selectedIndex % cols;
+                    int gridAreaW = g_overlayWidth - 2 * GRID_PADDING_X;
+                    int gridAreaH = g_overlayHeight - 2 * GRID_PADDING_Y;
+                    int gridW = cols * PREVIEW_WIDTH + (cols - 1) * PREVIEW_MARGIN;
+                    int gridH = rows * PREVIEW_HEIGHT + (rows - 1) * PREVIEW_MARGIN;
+                    int startX = GRID_PADDING_X - g_scrollX;
+                    int startY = GRID_PADDING_Y - g_scrollY;
+                    auto scrollToSelected = [&]() {
+                        int selX = startX + col * (PREVIEW_WIDTH + PREVIEW_MARGIN);
+                        int selY = startY + row * (PREVIEW_HEIGHT + PREVIEW_MARGIN);
+                        if (selX < GRID_PADDING_X) g_scrollX = max(0, g_scrollX - (GRID_PADDING_X - selX));
+                        else if (selX + PREVIEW_WIDTH > g_overlayWidth - GRID_PADDING_X) g_scrollX = min(g_scrollMax, g_scrollX + (selX + PREVIEW_WIDTH - (g_overlayWidth - GRID_PADDING_X)));
+                        if (selY < GRID_PADDING_Y) g_scrollY = max(0, g_scrollY - (GRID_PADDING_Y - selY));
+                        else if (selY + PREVIEW_HEIGHT > g_overlayHeight - GRID_PADDING_Y) g_scrollY = min(g_scrollMaxY, g_scrollY + (selY + PREVIEW_HEIGHT - (g_overlayHeight - GRID_PADDING_Y)));
+                    };
+                    if (wParam == VK_LEFT) {
+                        if (col > 0) g_selectedIndex--;
+                        else if (row > 0) g_selectedIndex = (row - 1) * cols + (cols - 1);
+                        else g_selectedIndex = n - 1; // Circular: si es el primero, va al último
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_RIGHT) {
+                        if (col < cols - 1 && g_selectedIndex + 1 < n) g_selectedIndex++;
+                        else if (row < rows - 1) g_selectedIndex = (row + 1) * cols;
+                        else g_selectedIndex = 0; // Circular: si es el último, va al primero
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_UP) {
+                        if (row > 0) g_selectedIndex -= cols;
+                        else g_selectedIndex = (col < n % cols) ? (rows - 1) * cols + col : (rows - 2) * cols + col;
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_DOWN) {
+                        if (row < rows - 1 && g_selectedIndex + cols < n) g_selectedIndex += cols;
+                        else g_selectedIndex = col;
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        scrollToSelected();
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    }
+                }
             }
             break;
         }
@@ -1223,6 +1341,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (IsIconic(g_windows[num].hwnd)) ShowWindow(g_windows[num].hwnd, SW_RESTORE);
                     if (!SetForegroundWindow(g_windows[num].hwnd)) SwitchToThisWindow(g_windows[num].hwnd, TRUE);
                     ShowWindow(hwnd, SW_HIDE);
+                    KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 }
                 return 0;
             }
@@ -1235,10 +1354,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT clientRect;
             GetClientRect(hwnd, &clientRect);
             
+            // Crear DC compatible con transparencia para overlay
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBM = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
             HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
             
+            // Fondo transparente para overlay eficiente
+            BLENDFUNCTION blend = { AC_SRC_OVER, 0, OVERLAY_BG_ALPHA, 0 };
             HBRUSH bgBrush = CreateSolidBrush(OVERLAY_BG_COLOR);
             FillRect(memDC, &clientRect, bgBrush);
             DeleteObject(bgBrush);
@@ -1434,7 +1556,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 DeleteObject(borderBrush);
                 DeleteObject(rgn);
             }
-            BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, memDC, 0, 0, SRCCOPY);
+            // Usar AlphaBlend para overlay eficiente con transparencia
+            AlphaBlend(hdc, 0, 0, clientRect.right, clientRect.bottom, 
+                      memDC, 0, 0, clientRect.right, clientRect.bottom, blend);
             SelectObject(memDC, oldBM);
             DeleteObject(memBM);
             DeleteDC(memDC);
@@ -1450,17 +1574,43 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_ACTIVATE:
             if (wParam == WA_INACTIVE) {
                 ShowWindow(hwnd, SW_HIDE);
+                KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 return 0;
             }
             break;
         case WM_KILLFOCUS:
             ShowWindow(hwnd, SW_HIDE);
+            KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
             return 0;
         case WM_VIRTUAL_DESKTOP_CHANGED:
             // Reload window list and UI, but do NOT reload persistent data
             InvalidateGrid(hwnd);
             break;
             
+        case WM_TIMER:
+            // Timer para detectar cuando se suelta Alt después de Alt+Q
+            if (wParam == 100 && g_lastHotkey == 2) {
+                // Verificar si Alt ya no está presionado
+                if (!(GetAsyncKeyState(VK_MENU) & 0x8000)) {
+                    // Enfoca la ventana seleccionada antes de ocultarla
+                    auto& windows = g_windows;
+                    int n = (int)windows.size();
+                    if (n > 0 && g_selectedIndex >= 0 && g_selectedIndex < n) {
+                        if (IsIconic(windows[g_selectedIndex].hwnd)) {
+                            ShowWindow(windows[g_selectedIndex].hwnd, SW_RESTORE);
+                        }
+                        AllowSetForegroundWindow(ASFW_ANY);
+                        if (!SetForegroundWindow(windows[g_selectedIndex].hwnd)) {
+                            SwitchToThisWindow(windows[g_selectedIndex].hwnd, TRUE);
+                        }
+                    }
+                    ShowWindow(hwnd, SW_HIDE);
+                    g_lastHotkey = 0;
+                    KillTimer(hwnd, 100);
+                    return 0;
+                }
+            }
+            break;
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
     }

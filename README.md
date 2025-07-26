@@ -1,25 +1,33 @@
+# BetterAltTab_Unnamed10110 v2
 
-A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. Designed for power users who want a beautiful, fast, and feature-rich window switcher with persistent Z-order, pinning, search/filter, and more.
+A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 2** brings even more power-user features, robust tray integration, seamless virtual desktop support, and a beautiful, efficient overlay.
 
 ---
 
-## 🚀 Features
+## 🚀 What's New in v2
 
-- **Modern Alt+Tab Overlay**: Beautiful, resizable, rounded-corner overlay with OLED black theme and transparency.
-- **Live Window Thumbnails**: See real-time previews of all open windows, just like Windows 11/10 Alt+Tab.
-- **Persistent Z-Order Mode**: Pin and reorder windows; your custom order persists across sessions and Explorer restarts.
+- **Persistent Tray Icon**: The tray icon is always visible and auto-recovers after Explorer restarts or crashes.
+- **Robust Alt+Q Navigation**: Open the overlay with Alt+Q, keep holding Alt, and use arrow keys to navigate. Release Alt to focus the selected window. Navigation only works while Alt is held, for a true power-user workflow.
+- **Circular Navigation**: Arrow navigation wraps around—pressing right on the last window jumps to the first, and left on the first jumps to the last.
+- **Efficient Overlay**: Uses a layered, double-buffered, rounded window with true transparency for smooth, flicker-free visuals and minimal CPU usage.
+- **Virtual Desktop Awareness**: Instantly updates when you switch virtual desktops, always showing the correct windows.
+- **Persistent Z-Order & Pinning**: Pin windows, reorder them, and your layout persists across sessions and even after Explorer crashes.
 - **Quick Actions**: Close, pin, and move-to-position actions for each window, accessible via mouse or keyboard.
-- **Keyboard Shortcuts**:
-  - `Ctrl+NumpadDot` or `Alt+Q`: Open overlay, cycle selection, release modifier to focus selected window.
-  - Number keys (1-9, 0): Instantly select and focus the corresponding window.
-  - Arrow keys, Tab, Enter, Esc: Full keyboard navigation and dismissal.
-- **Pin to Position**: Use the `#` button to pin a window to a specific position in the persistent order.
 - **OLED Black Theme**: Overlay and popups use a true black background for perfect OLED displays.
 - **Minimal Dependencies**: Pure Win32 API, no Qt/.NET/third-party frameworks.
 - **Super Fast**: Instant overlay, no lag, optimized for large numbers of windows.
 
 ---
+
 ## Demostration
+```
+# Quick commented guide:
+- Press atl+q to open the overlay, with F2 you can change between dynamic mode and persistence z-order mode (you will notice the difference on the button 
+right to the thumbnails)
+- When cycling with alt+q, and you decide what window focus, just press again alt and it will focus that window (old behavior).
+- Ctrl+Numpaddot has the same behavior as alt+tab (alt+q is an upgraded behavior)
+```
+
 - Dynamic Mode (Classic Mode)
   <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/04c8c545-55e2-4e63-b75d-eb8fc92b1970" />
 - Z-order Persistence Mode:
@@ -29,16 +37,15 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 - You also have the option to use shortcuts to acceso to the most importants windows pinned as important with jus the number in the window position
   <img width="1689" height="832" alt="image" src="https://github.com/user-attachments/assets/23789cc3-7a79-4c8c-a394-902621cb7a9e" />
 
-
 ---
 
 ## 🖥️ How to Use
 
 ### Hotkeys
 - **Open Overlay**: `Ctrl+NumpadDot` or `Alt+Q`
+- **Navigate**: While holding Alt, use arrow keys or Tab to move selection (navigation only works while Alt is held)
 - **Cycle Selection**: Keep holding the modifier and press the hotkey again
 - **Select by Number**: Press `1`-`9` or `0` (for 10th) to instantly select/focus a window
-- **Navigate**: Use arrow keys, Tab, or mouse
 - **Close Overlay**: Release the modifier, press `Esc`, or click outside
 
 ### Quick Actions (on hover)
@@ -78,18 +85,28 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 - **Overlay Size**: Defaults to 88% screen width, 80% height; resizable at runtime.
 - **Theme**: OLED black by default; easily customizable in `main.cpp`.
 - **Hotkeys**: Change in `main.cpp` (`RegisterHotKey` calls).
-- **Ignored Files**: See `.gitignore` for build and temp files.
 
 ---
 
-## 🧩 Technical Details
+## 🧩 Technical Details & Libraries Used
 - **Language**: C++17, pure Win32 API
-- **Thumbnails**: Uses DWM API (`DwmRegisterThumbnail`)
-- **Virtual Desktops**: Uses `IVirtualDesktopManager` COM interface
-- **Overlay**: Layered, rounded, double-buffered window with transparency
-- **Persistence**: Custom binary format for window order and pin state
-- **Input Handling**: Full keyboard and mouse support, including hotkeys and search
-- **Performance**: Double-buffered GDI, minimal flicker, optimized for many windows
+- **Libraries/Headers**:
+  - `<windows.h>`: Core Win32 API
+  - `<dwmapi.h>`: DWM thumbnails (live previews)
+  - `<shobjidl.h>`, `<shellapi.h>`: Virtual desktop and tray icon management
+  - `<commctrl.h>`, `<uxtheme.h>`: Modern UI, theme, and controls
+  - `<objbase.h>`: COM for virtual desktop notifications
+  - `<psapi.h>`: Process info for window icons
+  - `<shlwapi.h>`, `<strsafe.h>`: Utility APIs
+- **Techniques**:
+  - **Layered, Rounded Overlay**: Uses `WS_EX_LAYERED`, `SetLayeredWindowAttributes`, and custom region for a modern, transparent overlay
+  - **Double Buffering**: Off-screen drawing for flicker-free UI
+  - **DWM Thumbnails**: `DwmRegisterThumbnail` for live window previews
+  - **Persistent Tray Icon**: Handles `WM_TASKBARCREATED` to restore the icon after Explorer restarts
+  - **Virtual Desktop Notifications**: Implements `IVirtualDesktopNotification` via COM to update overlay on desktop switch
+  - **Hotkey Registration**: Uses `RegisterHotKey` for global shortcuts
+  - **Custom Input Handling**: Full keyboard and mouse support, including Alt+arrow navigation, number selection, and quick actions
+  - **Persistence**: Custom binary format for window order and pin state
 
 ---
 
@@ -101,11 +118,10 @@ A modern, lightweight, and highly customizable Alt+Tab replacement for Windows, 
 - **Portable**: Single EXE, no installer needed
 - **Open Source**: Easily hackable and extensible
 
-
 ---
 
 ## 📝 License
-MIT 
+MIT
 
 ---
 
