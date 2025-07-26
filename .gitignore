@@ -58,3 +58,8 @@ Thumbs.db
 # Project-specific
 /grid_order.bin
 debug_log.txt 
+
+
+#README.md
+README.md
+*.md
