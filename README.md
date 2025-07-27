@@ -103,8 +103,8 @@ aaaaasas
 
 ### Visual Demostration
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e937236c-a632-4fd2-87e9-3ac5bfa7e3dd" />
-
+[<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e937236c-a632-4fd2-87e9-3ac5bfa7e3dd" />
+](https://github.com/Unnamed10110/BetterAltTab_Unnamed10110/blob/master/Carnac_27_07_2025_08_23_56.gif?raw=true)
 
 ![Carnac_27_07_2025_03_17_11](https://github.com/user-attachments/assets/2dfc02ba-87be-4296-9f64-fe90e6d58d55)
 
