@@ -95,11 +95,16 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 ### Mode Switching
 - **Toggle Modes**: Press `F2` to switch between Dynamic Order and Persistent Z-Order modes
 - **Visual Indicator**: The button appearance changes to show current mode
-
+aaaaasas
 ### Configuration
 - **Open Settings**: Right-click the tray icon and select "Settings..."
 - **Modify Columns**: Change the number of columns displayed in the grid
 - **Apply Changes**: Click "Apply" to save changes immediately
+
+### Visual Demostration
+
+![Carnac_27_07_2025_03_17_11](https://github.com/user-attachments/assets/2dfc02ba-87be-4296-9f64-fe90e6d58d55)
+
 
 ---
 
