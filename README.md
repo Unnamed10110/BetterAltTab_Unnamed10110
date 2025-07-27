@@ -103,8 +103,7 @@ aaaaasas
 
 ### Visual Demostration
 
-
-
+![Demo](https://github.com/Unnamed10110/BetterAltTab_Unnamed10110/blob/master/eg.gif)
 
 ---
 
