@@ -1,6 +1,6 @@
 # BetterAltTab_Unnamed10110 v3
 
-A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 3** introduces advanced number input overlay, comprehensive Spanish documentation, and enhanced user experience features.
+A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 3** introduces advanced number input overlay, comprehensive Spanish documentation, INI-based configuration system, settings dialog, dynamic thumbnail sizing, and enhanced user experience features.
 
 ---
 
@@ -12,6 +12,37 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 - **OLED Black Design**: The number input overlay features a sleek black background with white text and rounded corners
 - **Escape to Cancel**: Press Escape to close the number input overlay without selecting a window
 - **Standalone Window**: The input overlay operates as an independent window for better focus management
+
+### ⚙️ INI Configuration System
+- **Dynamic Configuration**: All application settings can be modified via `BetterAltTab.ini` without recompilation
+- **Configurable Parameters**: 
+  - Number of columns in the grid (1-19)
+  - Overlay opacity (0-255)
+  - Hotkey definitions
+  - Color customization (borders, highlights, etc.)
+  - Overlay size percentages
+- **Runtime Updates**: Settings are loaded on startup and can be modified through the settings dialog
+- **Backward Compatibility**: Default values are used if configuration file is missing
+
+### 🎛️ Settings Dialog
+- **Tray Menu Integration**: Right-click the tray icon and select "Settings..." to open the configuration dialog
+- **Real-time Updates**: Changes are applied immediately and saved to the INI file
+- **User-friendly Interface**: Simple dialog with input validation and error handling
+- **Persistent Storage**: All settings are automatically saved to `BetterAltTab.ini`
+
+### 📐 Dynamic Thumbnail Sizing
+- **Automatic Scaling**: Thumbnail sizes automatically adjust based on the configured number of columns
+- **Aspect Ratio Preservation**: Thumbnails maintain their original aspect ratio while scaling
+- **No Horizontal Scrolling**: All thumbnails fit within the overlay width without requiring horizontal scrolling
+- **Responsive Layout**: Grid layout adapts to different screen sizes and column configurations
+
+### 🖱️ Enhanced Mouse Support
+- **Wheel Scrolling**: 
+  - Normal mouse wheel: Vertical scrolling through windows
+  - Shift + mouse wheel: Horizontal scrolling through windows
+- **Hover Effects**: Visual feedback when hovering over window thumbnails and buttons
+- **Click Actions**: Direct interaction with pin, close, and pin-to-position buttons
+- **Drag and Drop**: Visual feedback during drag operations (prepared for future implementation)
 
 ### 🌍 Comprehensive Spanish Documentation
 - **Paraguayan Spanish Comments**: All configuration variables, defines, pragmas, includes, and functions are documented in Spanish
@@ -50,14 +81,25 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 - **Cancel**: Press `Escape` to close without selecting
 - **Visual**: Minimalistic black overlay with white text and rounded corners
 
+### Mouse Navigation
+- **Vertical Scroll**: Use mouse wheel to scroll through windows vertically
+- **Horizontal Scroll**: Hold Shift and use mouse wheel to scroll horizontally
+- **Hover Selection**: Move mouse over windows to highlight them
+- **Click to Select**: Click on any window thumbnail to select it
+
 ### Quick Actions
 - **Close Window**: Click the `X` icon on any window thumbnail
 - **Pin/Unpin**: Click the pin icon to pin/unpin a window
-- **Pin to Position**: Click the `#` icon to assign a specific position number
+- **Pin to Position**: Click the `#` icon to assign a specific position number (automatically pins the window)
 
 ### Mode Switching
 - **Toggle Modes**: Press `F2` to switch between Dynamic Order and Persistent Z-Order modes
 - **Visual Indicator**: The button appearance changes to show current mode
+
+### Configuration
+- **Open Settings**: Right-click the tray icon and select "Settings..."
+- **Modify Columns**: Change the number of columns displayed in the grid
+- **Apply Changes**: Click "Apply" to save changes immediately
 
 ---
 
@@ -72,6 +114,10 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 
 ### Advanced Features
 - **Dual Input Systems**: Both numpad and precise number input
+- **INI Configuration**: External configuration file for all settings
+- **Settings Dialog**: User-friendly interface for configuration changes
+- **Dynamic Thumbnail Sizing**: Automatic scaling based on column count
+- **Enhanced Mouse Support**: Wheel scrolling and hover effects
 - **OLED-Optimized Theme**: True black backgrounds for OLED displays
 - **Rounded Corners**: Modern UI with custom window regions
 - **Transparency Effects**: Layered windows with alpha blending
@@ -83,6 +129,7 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 - **Thread Safe**: Proper synchronization for multi-threaded operations
 - **Error Resilient**: Graceful handling of window state changes
 - **Cross-Desktop**: Works seamlessly across virtual desktops
+- **Configuration Driven**: Runtime configuration without recompilation
 
 ---
 
@@ -118,21 +165,48 @@ The application automatically registers itself to run as administrator on login 
 
 ## ⚙️ Configuration
 
+### INI File Configuration
+The application uses `BetterAltTab.ini` for all configuration settings:
+
+```ini
+[General]
+; Number of columns shown in the grid (1-19 recommended)
+Columns=9
+
+; Overlay opacity (0 = fully transparent, 255 = fully opaque)
+OverlayAlpha=230
+
+; Hot-key definitions – virtual-key codes or characters
+; Leave blank to keep compiled defaults
+;CtrlHotkey=VK_DECIMAL   ; decimal on numpad
+;AltQHotkey=Q            ; letter Q combined with Alt
+
+; Colour customisation (RGB hex, e.g. 00FF44 is bright green)
+;BorderColor=202030
+;HoverBorderColor=50B4FF
+;HighlightColor=00FF44
+
+; Per-monitor overlay size – expressed as percentage of work-area
+;OverlayWidthPct=88
+;OverlayHeightPct=80
+```
+
 ### Overlay Settings
-- **Size**: Defaults to 88% screen width, 80% height
+- **Size**: Defaults to 88% screen width, 80% height (configurable)
 - **Colors**: OLED black theme with customizable accent colors
 - **Transparency**: Adjustable alpha blending for background
-- **Grid Layout**: Fixed 5-column layout with customizable spacing
+- **Grid Layout**: Dynamic column layout with customizable spacing
 
 ### Input Configuration
 - **Numpad Keys**: Direct 1-9, 0 for 10th window selection
 - **Ctrl Overlay**: Customizable size and position
 - **Hotkeys**: Configurable global shortcuts in main.cpp
+- **Mouse Wheel**: Vertical and horizontal scrolling support
 
 ### Persistence
 - **Window Order**: Saved in `grid_order.bin`
 - **Pin States**: Preserved across sessions
-- **Settings**: Runtime configuration changes persist
+- **Settings**: Runtime configuration changes persist in INI file
 
 ---
 
@@ -142,6 +216,8 @@ The application automatically registers itself to run as administrator on login 
 - **Window Manager**: Handles window enumeration and state management
 - **Overlay System**: Layered window with custom painting
 - **Input Handler**: Dual input system for keyboard and mouse
+- **Configuration System**: INI file parsing and settings management
+- **Settings Dialog**: Win32 common controls for user configuration
 - **Persistence Layer**: Binary file storage for user preferences
 - **Notification System**: Virtual desktop and system event handling
 
@@ -151,12 +227,14 @@ The application automatically registers itself to run as administrator on login 
 - **COM Interfaces**: Virtual desktop notifications
 - **GDI+**: Custom drawing and UI elements
 - **Shell API**: Tray icon and system integration
+- **INI File API**: Configuration file management
 
 ### Performance Optimizations
 - **Double Buffering**: Flicker-free rendering
 - **Lazy Loading**: Thumbnails loaded on-demand
 - **Efficient Sorting**: Optimized window ordering algorithms
 - **Memory Management**: Proper resource cleanup and reuse
+- **Dynamic Sizing**: Runtime thumbnail size calculations
 
 ---
 
@@ -167,18 +245,21 @@ The application automatically registers itself to run as administrator on login 
 - **Low Resource Usage**: Minimal CPU and memory footprint
 - **Smooth Animations**: Hardware-accelerated rendering
 - **Scalable**: Handles 50+ windows efficiently
+- **Dynamic Layout**: Automatic adaptation to different configurations
 
 ### User Experience
 - **Intuitive Interface**: Familiar Alt+Tab workflow with enhancements
-- **Flexible Input**: Multiple ways to select windows
+- **Flexible Input**: Multiple ways to select windows (keyboard, mouse, number input)
 - **Visual Feedback**: Clear indicators for all actions
 - **Accessibility**: Keyboard and mouse support
+- **Customizable**: Extensive configuration options
 
 ### Developer Experience
 - **Well Documented**: Comprehensive Spanish comments
 - **Modular Design**: Clean separation of concerns
 - **Extensible**: Easy to add new features
 - **Maintainable**: Clear code structure and organization
+- **Configuration Driven**: Runtime changes without recompilation
 
 ---
 
@@ -206,13 +287,17 @@ We welcome contributions! Please feel free to:
 ## 🔄 Version History
 
 ### v3.0 (Current)
-- Added Ctrl+number input overlay
-- Comprehensive Spanish documentation
-- Enhanced input handling
-- Improved visual design
-- Better error handling
+- Added INI configuration system
+- Implemented settings dialog with tray menu integration
+- Added dynamic thumbnail sizing
+- Enhanced mouse wheel scrolling (vertical and horizontal)
+- Improved pin and number pin button functionality
+- Added comprehensive Spanish documentation
+- Enhanced input handling and visual feedback
+- Better error handling and resource management
 
 ### v2.0
+- Added Ctrl+number input overlay
 - Persistent tray icon
 - Virtual desktop support
 - Enhanced navigation
