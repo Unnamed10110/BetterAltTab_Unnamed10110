@@ -1197,9 +1197,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         }
                     }
                     
-                    // Si el clic fue en la miniatura, la seleccionamos.
+                    // Si el clic fue en la miniatura, la seleccionamos y enfocamos.
                     g_selectedIndex = i; // Seleccionamos la ventana.
                     g_hoverIndex = i; // El hover va a la misma ventana.
+                    
+                    // Enfocamos la ventana seleccionada (incluso si está minimizada).
+                    if (IsIconic(windows[i].hwnd)) { // Si la ventana está minimizada.
+                        ShowWindow(windows[i].hwnd, SW_RESTORE); // La restauramos.
+                    }
+                    AllowSetForegroundWindow(ASFW_ANY); // Permitimos que cualquier ventana vaya al frente.
+                    if (!SetForegroundWindow(windows[i].hwnd)) { // Si no pudimos ponerla al frente.
+                        SwitchToThisWindow(windows[i].hwnd, TRUE); // Usamos el método alternativo.
+                    }
+                    
+                    ShowWindow(hwnd, SW_HIDE); // Ocultamos la superposición.
                     InvalidateGrid(hwnd); // Redibujamos la grilla.
                     return 0; // No procesamos más.
                 }
