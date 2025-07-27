@@ -103,10 +103,7 @@ aaaaasas
 
 ### Visual Demostration
 
-![Demo](https://github.com/Unnamed10110/BetterAltTab_Unnamed10110/raw/master/Carnac_27_07_2025_08_23_56.gif)
 
-
-![Carnac_27_07_2025_03_17_11](https://github.com/user-attachments/assets/2dfc02ba-87be-4296-9f64-fe90e6d58d55)
 
 
 ---
