@@ -84,7 +84,7 @@ extern int g_previewW;
 extern int g_previewH;
 void UpdatePreviewSize();
 const COLORREF OVERLAY_BG_COLOR = RGB(0, 0, 0); // Fondo negro, bien oscuro.
-const BYTE OVERLAY_BG_ALPHA = 230; // Transparencia del overlay (0 = invisible, 255 = opaco).
+const BYTE OVERLAY_BG_ALPHA = 255; // Transparencia del overlay (255 = completamente opaco, sin transparencia).
 const COLORREF BORDER_COLOR = RGB(32, 32, 48); // Color del borde de las miniaturas.
 const COLORREF HOVER_BORDER_COLOR = RGB(80, 180, 255); // Borde azul cuando pasás el mouse.
 const COLORREF DRAG_BORDER_COLOR = RGB(180, 140, 255); // Borde violeta cuando arrastrás.
@@ -379,22 +379,10 @@ void DrawWindowIcon(HDC hdc, HWND hwnd, int x, int y, int size) {
 // Esta función dibuja texto con un efecto de resplandor (glow).
 // Es como cuando escribís con marcador fluorescente: se ve bien hasta en fondos oscuros.
 void DrawTextWithShadow(HDC hdc, LPCWSTR text, RECT* rc, COLORREF color, int glowSize) {
-    DTTOPTS dtt = { sizeof(DTTOPTS) }; // Opciones para el texto con tema.
-    dtt.dwFlags = DTT_COMPOSITED | DTT_TEXTCOLOR | DTT_GLOWSIZE; // Activamos composición, color y resplandor.
-    dtt.crText = color; // Color del texto.
-    dtt.iGlowSize = glowSize; // Tamaño del resplandor.
-    
-    HTHEME hTheme = OpenThemeData(nullptr, L"WINDOW"); // Abrimos el tema de Windows.
-    if (hTheme) { // Si pudimos abrir el tema.
-        DrawThemeTextEx(hTheme, hdc, 0, 0, text, -1, // Dibujamos el texto con el tema.
-                       DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS, // Centrado, una línea, con puntos si es muy largo.
-                       rc, &dtt);
-        CloseThemeData(hTheme); // Cerramos el tema.
-    } else { // Si no pudimos abrir el tema.
-        SetTextColor(hdc, color); // Ponemos el color del texto.
-        SetBkMode(hdc, TRANSPARENT); // Fondo transparente.
-        DrawTextW(hdc, text, -1, rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS); // Dibujamos el texto normal.
-    }
+    // Versión simplificada sin efectos visuales para mejor rendimiento
+    SetTextColor(hdc, color); // Ponemos el color del texto.
+    SetBkMode(hdc, TRANSPARENT); // Fondo transparente.
+    DrawTextW(hdc, text, -1, rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS); // Dibujamos el texto normal.
 }
 
 // Esta función centra la ventana del overlay en la pantalla.
@@ -527,25 +515,9 @@ void DrawNumberOverlay(HDC hdc, int x, int y, int number) {
         HFONT oldFont = (HFONT)SelectObject(hdc, hFont); // Guardamos la fuente anterior.
         SetBkMode(hdc, TRANSPARENT); // Fondo transparente.
         
-        // Dibujamos con efecto de resplandor para mejor visibilidad.
-        DTTOPTS dttOpts = { sizeof(DTTOPTS) }; // Opciones para el texto con tema.
-        dttOpts.dwFlags = DTT_TEXTCOLOR | DTT_GLOWSIZE; // Activamos color y resplandor.
-        dttOpts.crText = RGB(80, 180, 255); // Color azulado.
-        dttOpts.iGlowSize = 8; // Tamaño del resplandor.
-        
-        RECT rc = { x - xOffset, y, x + 50, y + 50 }; // Rectángulo suficientemente grande para el texto.
-        
-        HTHEME hTheme = OpenThemeData(nullptr, L"WINDOW"); // Abrimos el tema de Windows.
-        if (hTheme) { // Si pudimos abrir el tema.
-            DrawThemeTextEx(hTheme, hdc, 0, 0, buf, -1, // Dibujamos el texto con el tema.
-                           DT_LEFT | DT_TOP | DT_SINGLELINE, // Alineado a la izquierda y arriba.
-                           &rc, &dttOpts);
-            CloseThemeData(hTheme); // Cerramos el tema.
-        } else { // Si no pudimos abrir el tema.
-            // Alternativa si los temas no están disponibles.
-            SetTextColor(hdc, dttOpts.crText); // Ponemos el color del texto.
-            TextOutW(hdc, x - xOffset, y, buf, lstrlenW(buf)); // Dibujamos el texto normal.
-        }
+        // Versión simplificada sin efectos visuales para mejor rendimiento
+        SetTextColor(hdc, RGB(80, 180, 255)); // Color azulado.
+        TextOutW(hdc, x - xOffset, y, buf, lstrlenW(buf)); // Dibujamos el texto normal.
 
         SelectObject(hdc, oldFont); // Restauramos la fuente anterior.
         DeleteObject(hFont); // Borramos la fuente que creamos.
@@ -833,7 +805,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     UpdatePreviewSize(); // Recalculate with final dimensions
     // Creamos la ventana como overlay para mayor eficiencia.
     HWND hwnd = CreateWindowEx( // Creamos la ventana.
-        WS_EX_TOPMOST | WS_EX_LAYERED, // Estilos extendidos: siempre arriba y con capas.
+        WS_EX_TOPMOST, // Estilos extendidos: siempre arriba, sin capas para mejor rendimiento.
         CLASS_NAME, L"BetterAltTab_Unnamed10110", // Clase y título de la ventana.
         WS_POPUP, // Estilo de ventana: popup (sin bordes).
         CW_USEDEFAULT, CW_USEDEFAULT, g_overlayWidth, g_overlayHeight, // Posición y tamaño.
@@ -842,12 +814,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     if (!hwnd) return 0; // Si no se pudo crear la ventana, salimos.
     g_mainHwnd = hwnd; // Guardamos el handle para las notificaciones.
     
-    // Configuramos la ventana como overlay eficiente.
-    SetLayeredWindowAttributes(hwnd, 0, g_overlayAlpha, LWA_ALPHA); // Establecemos la transparencia con config.
+    // Configuramos la ventana sin efectos visuales para mejor rendimiento.
+    // SetLayeredWindowAttributes(hwnd, 0, g_overlayAlpha, LWA_ALPHA); // Comentado: sin transparencia para mejor rendimiento.
     
-    // Establecemos una región redondeada para la ventana de superposición.
-    HRGN rgn = CreateRoundRectRgn(0, 0, g_overlayWidth, g_overlayHeight, 60, 60); // Región redondeada de 60x60 píxeles.
-    SetWindowRgn(hwnd, rgn, FALSE); // Aplicamos la región redondeada a la ventana.
+    // Establecemos una región rectangular simple para mejor rendimiento.
+    // HRGN rgn = CreateRoundRectRgn(0, 0, g_overlayWidth, g_overlayHeight, 60, 60); // Comentado: sin bordes redondeados para mejor rendimiento.
+    // SetWindowRgn(hwnd, rgn, FALSE); // Comentado: sin región personalizada para mejor rendimiento.
     CenterOverlayWindow(hwnd, g_overlayWidth, g_overlayHeight); // Centramos la ventana en la pantalla.
     LoadGridOrder(g_gridOrder); // Cargamos el orden guardado de las ventanas.
     RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL, VK_DECIMAL); // Registramos el atajo Ctrl+Numpad.
@@ -1577,13 +1549,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT clientRect;
             GetClientRect(hwnd, &clientRect);
             
-            // Crear DC compatible con transparencia para overlay
+            // Crear DC simple sin transparencia para mejor rendimiento
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBM = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
             HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
             
-            // Fondo transparente para overlay eficiente
-            BLENDFUNCTION blend = { AC_SRC_OVER, 0, g_overlayAlpha, 0 };
+            // Fondo sólido sin transparencia para mejor rendimiento
             HBRUSH bgBrush = CreateSolidBrush(OVERLAY_BG_COLOR);
             FillRect(memDC, &clientRect, bgBrush);
             DeleteObject(bgBrush);
@@ -1652,7 +1623,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     HPEN borderPen = CreatePen(PS_SOLID, border, borderColor);
                     HPEN oldPen = (HPEN)SelectObject(memDC, borderPen);
                     SelectObject(memDC, GetStockObject(NULL_BRUSH));
-                    RoundRect(memDC, cellRect.left, cellRect.top, cellRect.right, cellRect.bottom, 40, 40);
+                    Rectangle(memDC, cellRect.left, cellRect.top, cellRect.right, cellRect.bottom); // Rectángulo simple en lugar de redondeado
                     SelectObject(memDC, oldPen);
                     DeleteObject(borderPen);
                     // Dibuja el ícono de la ventana, el texto con sombra y la miniatura...
@@ -1800,9 +1771,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 DeleteObject(borderBrush);
                 DeleteObject(rgn);
             }
-            // Usar AlphaBlend para overlay eficiente con transparencia
-            AlphaBlend(hdc, 0, 0, clientRect.right, clientRect.bottom, 
-                      memDC, 0, 0, clientRect.right, clientRect.bottom, blend);
+            // Usar BitBlt simple sin transparencia para mejor rendimiento
+            BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, 
+                   memDC, 0, 0, SRCCOPY);
             SelectObject(memDC, oldBM);
             DeleteObject(memBM);
             DeleteDC(memDC);
