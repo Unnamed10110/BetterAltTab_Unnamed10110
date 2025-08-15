@@ -62,6 +62,7 @@
 #define GRID_ORDER_FILE L"grid_order.bin" // Archivo donde guardamos el orden de las ventanas.
 
 #define ID_TRAY_SETTINGS 2004
+#define ID_TRAY_CLEANUP 2005
 #define IDC_COLUMNS_LABEL 3001
 #define IDC_COLUMNS_EDIT 3002
 #define IDC_APPLY_BUTTON 3003
@@ -196,6 +197,20 @@ IVirtualDesktopManager* g_vdm = nullptr; // Para manejar escritorios virtuales.
 bool g_dynamicOrder = false; // Si el orden cambia dinámicamente o no.
 
 // ===============================
+// Variables de optimización de rendimiento
+// ===============================
+DWORD g_lastCleanupTime = 0; // Última vez que se limpió el cache
+DWORD g_lastWindowEnumTime = 0; // Última vez que se enumeraron las ventanas
+DWORD g_lastRedrawTime = 0; // Última vez que se redibujó
+ULONGLONG g_thumbnailMemoryUsage = 0; // Uso de memoria de miniaturas en bytes
+bool g_performanceMode = false; // Modo de rendimiento optimizado
+bool g_lowResourceMode = false; // Modo de bajo recursos activo
+int g_cleanupInterval = 30000; // Intervalo de limpieza automática (ms)
+int g_maxThumbnailMemory = 100 * 1024 * 1024; // Memoria máxima para miniaturas (100MB)
+int g_windowCacheTimeout = 5000; // Timeout del cache de ventanas (ms)
+int g_redrawThrottle = 50; // Throttle para redibujado (ms)
+
+// ===============================
 // Funciones principales
 // ===============================
 
@@ -214,6 +229,17 @@ void CenterOverlayWindow(HWND hwnd, int width, int height); // Centra la ventana
 void InvalidateGrid(HWND hwnd); // Le dice a Windows que redibuje la grilla.
 void UnregisterAllThumbnails(); // Borra todas las miniaturas de una vez.
 void ShowSettingsDialog(HWND parent); // <-- Forward declaration
+
+// ===============================
+// Funciones de optimización de rendimiento
+// ===============================
+void LoadPerformanceSettings(); // Carga configuración de rendimiento desde INI
+void CheckPerformanceMode(); // Verifica y ajusta el modo de rendimiento
+void CleanupThumbnailCache(); // Limpia cache de miniaturas automáticamente
+void MonitorMemoryUsage(); // Monitorea el uso de memoria
+bool ShouldRedraw(); // Determina si se debe redibujar basado en throttling
+void OptimizeProcessPriority(); // Optimiza la prioridad del proceso
+void ResetPerformanceCounters(); // Resetea contadores de rendimiento
 
 // Esta función cambia el orden de las ventanas en la pantalla (Z-order).
 // Es como when you put one sheet on top of another: the one on top is seen first.
@@ -258,11 +284,20 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
 // Esta función busca todas las ventanas abiertas y las devuelve en una lista.
 // También aplica el orden guardado si existe.
 std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd) {
+    DWORD currentTime = GetTickCount();
+    
+    // Optimización: cache de ventanas para evitar enumeración excesiva
+    if (currentTime - g_lastWindowEnumTime < g_windowCacheTimeout && !g_windows.empty()) {
+        return g_windows; // Retornar cache si no ha expirado
+    }
+    
     g_windows.clear(); // Limpiamos la lista anterior.
     EnumWindows(EnumWindowsProc, (LPARAM)excludeHwnd); // Buscamos todas las ventanas.
     if (!g_dynamicOrder && !g_gridOrder.empty()) { // Si tenemos un orden guardado y no es dinámico.
         ApplyGridOrder(g_windows, g_gridOrder); // Aplicamos el orden guardado.
     }
+    
+    g_lastWindowEnumTime = currentTime; // Actualizar timestamp de enumeración
     return g_windows; // Devolvemos la lista de ventanas.
 }
 
@@ -271,7 +306,11 @@ std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd) {
 void RegisterThumbnails(HWND host, std::vector<WindowInfo>& windows) {
     for (auto& win : windows) { // Recorremos cada ventana.
         if (!win.thumbnail) { // Si no tiene miniatura todavía.
-            DwmRegisterThumbnail(host, win.hwnd, &win.thumbnail); // Creamos la miniatura.
+            if (DwmRegisterThumbnail(host, win.hwnd, &win.thumbnail) == S_OK) { // Creamos la miniatura.
+                // Actualizar uso de memoria estimado
+                g_thumbnailMemoryUsage += (g_previewW * g_previewH * 4); // 4 bytes por píxel (RGBA)
+                g_thumbnailMap[win.hwnd] = win.thumbnail; // Guardar en el mapa global
+            }
         }
     }
 }
@@ -282,6 +321,8 @@ void UnregisterThumbnails(std::vector<WindowInfo>& windows) {
     for (auto& win : windows) { // Recorremos cada ventana.
         if (win.thumbnail) { // Si tiene miniatura.
             DwmUnregisterThumbnail(win.thumbnail); // La borramos.
+            // Actualizar uso de memoria estimado
+            g_thumbnailMemoryUsage -= (g_previewW * g_previewH * 4); // 4 bytes por píxel (RGBA)
             win.thumbnail = nullptr; // La marcamos como que no existe.
         }
     }
@@ -791,6 +832,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Cargar configuración desde INI
     LoadConfiguration();
     
+    // Inicializar optimizaciones de rendimiento
+    LoadPerformanceSettings();
+    ResetPerformanceCounters();
+    
     // Inicializamos COM y el administrador de escritorios virtuales.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); // Inicializamos COM en modo apartment-threaded.
     HRESULT hr = CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&g_vdm)); // Creamos el administrador de escritorios virtuales.
@@ -824,6 +869,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     LoadGridOrder(g_gridOrder); // Cargamos el orden guardado de las ventanas.
     RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL, VK_DECIMAL); // Registramos el atajo Ctrl+Numpad.
     RegisterHotKey(hwnd, HOTKEY_ID_ALTQ, MOD_ALT, 'Q'); // Registramos el atajo Alt+Q.
+    
+    // Inicializar timer de limpieza automática de rendimiento
+    SetTimer(hwnd, 300, g_cleanupInterval, NULL);
     ShowWindow(hwnd, SW_HIDE); // Ocultamos la ventana al inicio.
     
     // Inicializamos el ícono de la bandeja del sistema.
@@ -834,7 +882,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP; // Flags: ícono, mensaje y tooltip.
     nid.uCallbackMessage = WM_TRAYICON; // Mensaje que se envía cuando se hace clic.
     nid.hIcon = hIcon; // El ícono que creamos.
-    lstrcpyW(nid.szTip, L"BetterAltTab_Unnamed10110"); // Texto del tooltip.
+                    // Actualizar tooltip con información de rendimiento
+                wchar_t tooltipText[256];
+                swprintf_s(tooltipText, L"BetterAltTab_Unnamed10110\nMemory: %d MB", (int)(g_thumbnailMemoryUsage / (1024 * 1024)));
+                lstrcpyW(nid.szTip, tooltipText); // Texto del tooltip con info de memoria.
     Shell_NotifyIcon(NIM_ADD, &nid); // Agregamos el ícono a la bandeja del sistema.
     
     // Registramos las notificaciones de escritorios virtuales (forma correcta).
@@ -871,6 +922,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     CoUninitialize(); // Desinicializamos COM.
     UnregisterHotKey(hwnd, HOTKEY_ID); // Desregistramos el atajo Ctrl+Numpad.
     UnregisterHotKey(hwnd, HOTKEY_ID_ALTQ); // Desregistramos el atajo Alt+Q.
+    
+    // Limpiar timer de rendimiento
+    KillTimer(hwnd, 300);
     Shell_NotifyIcon(NIM_DELETE, &nid); // Borramos el ícono de la bandeja del sistema.
     if (hIcon) DestroyIcon(hIcon); // Destruimos el ícono que creamos.
     // Limpieza de las notificaciones.
@@ -902,6 +956,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING | (g_suspended ? MF_CHECKED : 0), ID_TRAY_SUSPEND, g_suspended ? L"Reanudar" : L"Suspend"); // Opción de suspender/reanudar.
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_RESTART, L"Restart"); // Opción de reiniciar.
+                AppendMenuW(hMenu, MF_STRING, ID_TRAY_CLEANUP, L"Cleanup Memory"); // Opción de limpieza de memoria.
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit"); // Opción de salir.
                 SetForegroundWindow(hwnd); // Ponemos nuestra ventana al frente.
                 int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, NULL); // Mostramos el menú y obtenemos la selección.
@@ -917,6 +973,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     GetModuleFileNameW(NULL, path, MAX_PATH); // Obtenemos la ruta del ejecutable actual.
                     ShellExecuteW(NULL, NULL, path, NULL, NULL, SW_SHOWNORMAL); // Ejecutamos una nueva instancia.
                     PostQuitMessage(0); // Salimos de la instancia actual.
+                } else if (cmd == ID_TRAY_CLEANUP) { // Si eligieron limpiar memoria.
+                    CleanupThumbnailCache(); // Limpiar cache de miniaturas
+                    MonitorMemoryUsage(); // Verificar uso de memoria
+                    CheckPerformanceMode(); // Ajustar modo de rendimiento
+                    ResetPerformanceCounters(); // Resetear contadores
                 }
             }
             break;
@@ -939,6 +1000,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     g_hoverIndex = 0; // El hover va a la primera ventana.
                     SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]"); // Cambiamos el título según el modo.
                     // Refrescamos las miniaturas cada vez que se muestra la superposición.
+                    CleanupThumbnailCache(); // Limpieza automática del cache
+                    MonitorMemoryUsage(); // Verificar uso de memoria
                     UnregisterAllThumbnails(); // Borramos todas las miniaturas anteriores.
                     g_windows = EnumerateWindows(hwnd); // Enumeramos las ventanas actuales.
                     RegisterThumbnails(hwnd, g_windows); // Creamos las nuevas miniaturas.
@@ -1805,6 +1868,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
             
         case WM_TIMER:
+            // Limpieza automática de rendimiento
+            if (wParam == 300) { // Timer de limpieza automática
+                CleanupThumbnailCache();
+                MonitorMemoryUsage();
+                CheckPerformanceMode();
+                
+                // Actualizar tooltip del tray con información de rendimiento
+                wchar_t tooltipText[256];
+                swprintf_s(tooltipText, L"BetterAltTab_Unnamed10110\nMemory: %d MB\nMode: %s", 
+                    (int)(g_thumbnailMemoryUsage / (1024 * 1024)),
+                    g_lowResourceMode ? L"Low Resource" : L"Normal");
+                lstrcpyW(nid.szTip, tooltipText);
+                Shell_NotifyIcon(NIM_MODIFY, &nid);
+                
+                return 0;
+            }
+            
             // Timer para detectar cuando se suelta Alt después de Alt+Q
             if (wParam == 100 && g_lastHotkey == 2) {
                 // Verificar si se presionó un numpad key usando GetAsyncKeyState
@@ -1924,6 +2004,7 @@ void UnregisterAllThumbnails() {
         }
     }
     g_thumbnailMap.clear(); // Limpiar el mapa de miniaturas
+    g_thumbnailMemoryUsage = 0; // Resetear uso de memoria
 }
 
 // ===============================
@@ -2134,6 +2215,137 @@ LRESULT CALLBACK CtrlNumberOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 }
 
 // ============================================================
+//  Implementación de funciones de optimización de rendimiento
+// ============================================================
+
+void LoadPerformanceSettings() {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+    
+    // Cargar configuración de rendimiento
+    g_cleanupInterval = GetPrivateProfileIntW(L"Performance", L"AutoCleanupInterval", 30000, exePath);
+    g_maxThumbnailMemory = GetPrivateProfileIntW(L"Performance", L"MaxThumbnailMemory", 100, exePath) * 1024 * 1024;
+    g_windowCacheTimeout = GetPrivateProfileIntW(L"Performance", L"WindowCacheTimeout", 5000, exePath);
+    g_redrawThrottle = GetPrivateProfileIntW(L"Performance", L"NormalRefreshRate", 50, exePath);
+    
+    // Aplicar configuración inicial
+    CheckPerformanceMode();
+    OptimizeProcessPriority();
+}
+
+void CheckPerformanceMode() {
+    MEMORYSTATUSEX memInfo = { sizeof(MEMORYSTATUSEX) };
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        DWORDLONG availableMemory = memInfo.ullAvailPhys;
+        DWORD memoryLoad = memInfo.dwMemoryLoad;
+        
+        // Activar modo de bajo recursos si la memoria disponible es baja
+        g_lowResourceMode = (availableMemory < (512 * 1024 * 1024)) || (memoryLoad > 80);
+        
+        // Ajustar parámetros según el modo
+        if (g_lowResourceMode) {
+            g_cleanupInterval = 15000; // Limpieza más frecuente
+            g_redrawThrottle = 100; // Redibujado más lento
+        } else {
+            g_cleanupInterval = 30000; // Limpieza normal
+            g_redrawThrottle = 50; // Redibujado normal
+        }
+    }
+}
+
+void CleanupThumbnailCache() {
+    DWORD currentTime = GetTickCount();
+    
+    // Solo limpiar si ha pasado suficiente tiempo
+    if (currentTime - g_lastCleanupTime < g_cleanupInterval) {
+        return;
+    }
+    
+    // Limpiar miniaturas de ventanas que ya no existen
+    std::vector<HWND> windowsToRemove;
+    for (auto& pair : g_thumbnailMap) {
+        if (!IsWindow(pair.first)) {
+            if (pair.second) {
+                DwmUnregisterThumbnail(pair.second);
+                g_thumbnailMemoryUsage -= (g_previewW * g_previewH * 4); // Estimación de memoria
+            }
+            windowsToRemove.push_back(pair.first);
+        }
+    }
+    
+    // Remover entradas del mapa
+    for (HWND hwnd : windowsToRemove) {
+        g_thumbnailMap.erase(hwnd);
+    }
+    
+    // Si el uso de memoria es muy alto, limpiar más agresivamente
+    if (g_thumbnailMemoryUsage > g_maxThumbnailMemory) {
+        // Mantener solo las miniaturas más recientes
+        std::vector<std::pair<HWND, HTHUMBNAIL>> thumbnails;
+        for (auto& pair : g_thumbnailMap) {
+            thumbnails.push_back(pair);
+        }
+        
+        // Ordenar por orden de uso (simplificado)
+        if (thumbnails.size() > 10) {
+            for (size_t i = 10; i < thumbnails.size(); ++i) {
+                if (thumbnails[i].second) {
+                    DwmUnregisterThumbnail(thumbnails[i].second);
+                    g_thumbnailMemoryUsage -= (g_previewW * g_previewH * 4);
+                }
+                g_thumbnailMap.erase(thumbnails[i].first);
+            }
+        }
+    }
+    
+    g_lastCleanupTime = currentTime;
+}
+
+void MonitorMemoryUsage() {
+    // Verificar uso de memoria del proceso
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+        // Si el proceso usa más de 200MB, activar modo de bajo recursos
+        if (pmc.WorkingSetSize > (200 * 1024 * 1024)) {
+            g_lowResourceMode = true;
+            g_cleanupInterval = 10000; // Limpieza muy frecuente
+        }
+    }
+}
+
+bool ShouldRedraw() {
+    DWORD currentTime = GetTickCount();
+    if (currentTime - g_lastRedrawTime < g_redrawThrottle) {
+        return false;
+    }
+    g_lastRedrawTime = currentTime;
+    return true;
+}
+
+void OptimizeProcessPriority() {
+    // Establecer prioridad del proceso
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+    
+    if (GetPrivateProfileIntW(L"Performance", L"OptimizePriority", 1, exePath)) {
+        SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    }
+}
+
+void ResetPerformanceCounters() {
+    g_lastCleanupTime = 0;
+    g_lastWindowEnumTime = 0;
+    g_lastRedrawTime = 0;
+    g_thumbnailMemoryUsage = 0;
+    g_performanceMode = false;
+    g_lowResourceMode = false;
+}
+
+// ============================================================
 //  resize de las miniaturas para que todas las columnas encajen en el overlay
 // ============================================================
 int g_previewW = BASE_PREVIEW_WIDTH; // inicializado con constante
@@ -2214,3 +2426,14 @@ void ShowSettingsDialog(HWND parent) {
         UpdateWindow(hwnd);
     }
 }
+
+// ===============================
+// Funciones de optimización de rendimiento
+// ===============================
+void LoadPerformanceSettings(); // Carga configuración de rendimiento desde INI
+void CheckPerformanceMode(); // Verifica y ajusta el modo de rendimiento
+void CleanupThumbnailCache(); // Limpia cache de miniaturas automáticamente
+void MonitorMemoryUsage(); // Monitorea el uso de memoria
+bool ShouldRedraw(); // Determina si se debe redibujar basado en throttling
+void OptimizeProcessPriority(); // Optimiza la prioridad del proceso
+void ResetPerformanceCounters(); // Resetea contadores de rendimiento
