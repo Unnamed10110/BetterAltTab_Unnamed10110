@@ -1,4 +1,4 @@
-# BetterAltTab_Unnamed10110 v3
+# BetterAltTab_Unnamed10110 v5
 
 A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 3** introduces advanced number input overlay, comprehensive Spanish documentation, INI-based configuration system, settings dialog, dynamic thumbnail sizing, and enhanced user experience features.
 
