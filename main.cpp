@@ -35,6 +35,8 @@
 #include <mutex>
 // Funciones útiles como sort, min, max, etc.
 #include <algorithm>
+// Para transformaciones de strings
+#include <cctype>
 // Para cosas de la bandeja del sistema y ejecutar programas.
 #include <shellapi.h>
 // Utilidades varias de Windows.
@@ -59,13 +61,63 @@
 // HOTKEY_ID es el identificador para el atajo de teclado principal (Ctrl+Numpad).
 #define HOTKEY_ID 0xBEEF      // Esto es solo un número raro para que no choque con otros IDs.
 #define HOTKEY_ID_ALTQ 0xBEEE // Otro ID para el atajo Alt+Q.
+#define HOTKEY_ID_ALTA 0xBEED // ID para el atajo Alt+A (filtro persistente).
 #define GRID_ORDER_FILE L"grid_order.bin" // Archivo donde guardamos el orden de las ventanas.
 
 #define ID_TRAY_SETTINGS 2004
+#define ID_TRAY_FILTERS 2006
 #define ID_TRAY_CLEANUP 2005
+#define ID_TRAY_TOGGLE_ALTA 2007
+#define ID_TRAY_TOGGLE_DYNAMIC_MODE 2008
+#define ID_TRAY_FULL_PERFORMANCE 2009
+#define ID_TRAY_FULL_LOW_RESOURCES 2010
 #define IDC_COLUMNS_LABEL 3001
 #define IDC_COLUMNS_EDIT 3002
 #define IDC_APPLY_BUTTON 3003
+#define IDC_OVERLAY_ALPHA_LABEL 3004
+#define IDC_OVERLAY_ALPHA_EDIT 3005
+#define IDC_FIXED_COLS_LABEL 3006
+#define IDC_FIXED_COLS_EDIT 3007
+#define IDC_DYNAMIC_ORDER_CHECK 3008
+#define IDC_SAVE_WINDOW_ORDER_CHECK 3009
+#define IDC_SHOW_CLOSED_WINDOWS_CHECK 3010
+#define IDC_CLOSED_WINDOW_DELAY_LABEL 3011
+#define IDC_CLOSED_WINDOW_DELAY_EDIT 3012
+#define IDC_AUTO_HIDE_OVERLAY_CHECK 3013
+#define IDC_SHOW_FILTER_INDICATOR_CHECK 3014
+#define IDC_ENABLE_SOUNDS_CHECK 3015
+#define IDC_LOW_RESOURCE_MODE_LABEL 3016
+#define IDC_LOW_RESOURCE_MODE_COMBO 3017
+#define IDC_MAX_THUMBNAIL_CACHE_LABEL 3018
+#define IDC_MAX_THUMBNAIL_CACHE_EDIT 3019
+#define IDC_NORMAL_REFRESH_RATE_LABEL 3020
+#define IDC_NORMAL_REFRESH_RATE_EDIT 3021
+#define IDC_AUTO_CLEANUP_INTERVAL_LABEL 3022
+#define IDC_AUTO_CLEANUP_INTERVAL_EDIT 3023
+#define IDC_MAX_THUMBNAIL_MEMORY_LABEL 3024
+#define IDC_MAX_THUMBNAIL_MEMORY_EDIT 3025
+#define IDC_WINDOW_CACHE_TIMEOUT_LABEL 3026
+#define IDC_WINDOW_CACHE_TIMEOUT_EDIT 3027
+#define IDC_SHOW_TRAY_ICON_CHECK 3028
+#define IDC_SHOW_SYSTEM_INFO_CHECK 3029
+#define IDC_SHOW_WINDOW_COUNT_CHECK 3030
+#define IDC_SHOW_MEMORY_USAGE_CHECK 3031
+#define IDC_SHOW_PERFORMANCE_MODE_CHECK 3032
+#define IDC_TRAY_ICON_SIZE_LABEL 3033
+#define IDC_TRAY_ICON_SIZE_COMBO 3034
+#define IDC_TRAY_ICON_COLOR_LABEL 3035
+#define IDC_TRAY_ICON_COLOR_EDIT 3036
+#define IDC_ALTQ_KEY_LABEL 3037
+#define IDC_ALTQ_KEY_EDIT 3038
+#define IDC_ALTA_KEY_LABEL 3039
+#define IDC_ALTA_KEY_EDIT 3040
+#define IDC_NUMPAD_MODIFIER_LABEL 3041
+#define IDC_NUMPAD_MODIFIER_COMBO 3042
+#define IDC_DEBUG_MODE_CHECK 3043
+#define IDC_EVENT_LOGGING_CHECK 3044
+#define IDC_LOG_LEVEL_LABEL 3045
+#define IDC_LOG_LEVEL_COMBO 3046
+#define IDC_CANCEL_BUTTON 3047
 
 // Acá configuramos cómo se ve la interfaz: márgenes, tamaños, colores, etc.
 const int GRID_COLS = 4; // Cuántas columnas tiene la grilla (no se usa, ver FIXED_COLS más abajo).
@@ -142,6 +194,8 @@ static int g_closeHoverIndex = -1; // Sobre qué botón de cerrar está el mouse
 static int g_pinToPosHoverIndex = -1; // Sobre qué botón de pin a posición está el mouse.
 static int g_lastHotkey = 0; // Último atajo usado: 0 = ninguno, 1 = ctrl+numpad, 2 = alt+q.
 
+
+
 // ===============================
 // Superposición extra para entrada Ctrl+número
 // ===============================
@@ -197,6 +251,29 @@ IVirtualDesktopManager* g_vdm = nullptr; // Para manejar escritorios virtuales.
 bool g_dynamicOrder = false; // Si el orden cambia dinámicamente o no.
 
 // ===============================
+// Variables de filtrado
+// ===============================
+static bool g_filteringEnabled = false; // Si el filtrado está habilitado
+static std::wstring g_filterText; // Texto del filtro actual
+static std::vector<WindowInfo> g_filteredWindows; // Ventanas filtradas
+static std::vector<WindowInfo> g_allWindows; // Todas las ventanas (sin filtrar)
+static bool g_filterByTitle = true; // Filtrar por título
+static bool g_filterByClassName = true; // Filtrar por nombre de clase
+static bool g_filterByProcessName = true; // Filtrar por nombre del proceso
+static bool g_filterCaseSensitive = false; // Si el filtro es sensible a mayúsculas
+static bool g_filterRegex = false; // Si usar expresiones regulares
+static bool g_filterExcludeHidden = true; // Excluir ventanas ocultas
+static bool g_filterExcludeMinimized = false; // Excluir ventanas minimizadas
+static std::vector<std::wstring> g_excludedProcesses; // Procesos excluidos
+static std::vector<std::wstring> g_excludedClasses; // Clases de ventana excluidas
+static std::vector<std::wstring> g_includedProcesses; // Procesos incluidos (whitelist)
+static std::vector<std::wstring> g_includedClasses; // Clases de ventana incluidas (whitelist)
+static bool g_quickFilterActive = false; // Si el filtro rápido está activo
+static HWND g_quickFilterEdit = nullptr; // Control de entrada del filtro rápido
+static bool g_persistentFilterMode = false; // Si el overlay está en modo filtro persistente (Alt+A)
+static bool g_placeholderActive = false; // Si el placeholder está activo
+
+// ===============================
 // Variables de optimización de rendimiento
 // ===============================
 DWORD g_lastCleanupTime = 0; // Última vez que se limpió el cache
@@ -211,6 +288,12 @@ int g_windowCacheTimeout = 5000; // Timeout del cache de ventanas (ms)
 int g_redrawThrottle = 50; // Throttle para redibujado (ms)
 
 // ===============================
+// Variables para detección de ventanas cerradas
+// ===============================
+HHOOK g_windowHook = nullptr; // Hook para detectar cuando se cierran ventanas
+bool g_windowClosed = false; // Flag para indicar que una ventana se cerró
+
+// ===============================
 // Funciones principales
 // ===============================
 
@@ -223,12 +306,40 @@ void UnregisterThumbnails(std::vector<WindowInfo>& windows); // Borra las miniat
 void SaveGridOrder(const std::vector<WindowInfo>& windows); // Guarda el orden de las ventanas en un archivo.
 void LoadGridOrder(std::vector<PersistedWindow>& order); // Carga el orden guardado del archivo.
 void ApplyGridOrder(std::vector<WindowInfo>& windows, const std::vector<PersistedWindow>& order); // Aplica el orden guardado.
+
+// Forward declarations for filter functions
+void LoadFilterSettings(); // Carga configuración de filtros desde INI
+void SaveFilterSettings(); // Guarda configuración de filtros en INI
+void ApplyFilters(); // Aplica los filtros actuales a las ventanas
+bool WindowMatchesFilter(const WindowInfo& window); // Verifica si una ventana coincide con el filtro
+std::wstring GetProcessName(HWND hwnd); // Obtiene el nombre del proceso de una ventana
+void ToggleFiltering(); // Alterna el estado del filtrado
+void ClearFilters(); // Limpia todos los filtros
+void SetFilterText(const std::wstring& text); // Establece el texto del filtro
+void AddExcludedProcess(const std::wstring& processName); // Agrega un proceso a la lista de excluidos
+void RemoveExcludedProcess(const std::wstring& processName); // Remueve un proceso de la lista de excluidos
+void AddExcludedClass(const std::wstring& className); // Agrega una clase a la lista de excluidos
+void RemoveExcludedClass(const std::wstring& className); // Remueve una clase de la lista de excluidos
+void AddIncludedProcess(const std::wstring& processName); // Agrega un proceso a la lista de incluidos
+void RemoveIncludedProcess(const std::wstring& processName); // Remueve un proceso de la lista de incluidos
+void AddIncludedClass(const std::wstring& className); // Agrega una clase a la lista de incluidos
+void RemoveIncludedClass(const std::wstring& className); // Remueve una clase de la lista de incluidos
+void ShowFilterDialog(HWND parent); // Muestra el diálogo de configuración de filtros
+void ClearSearchBox(); // Limpia la caja de búsqueda
 void DrawWindowIcon(HDC hdc, HWND hwnd, int x, int y, int size); // Dibuja el ícono de una ventana.
 void DrawTextWithShadow(HDC hdc, LPCWSTR text, RECT* rc, COLORREF color, int glowSize); // Dibuja texto con sombra.
 void CenterOverlayWindow(HWND hwnd, int width, int height); // Centra la ventana del overlay en la pantalla.
 void InvalidateGrid(HWND hwnd); // Le dice a Windows que redibuje la grilla.
 void UnregisterAllThumbnails(); // Borra todas las miniaturas de una vez.
 void ShowSettingsDialog(HWND parent); // <-- Forward declaration
+void ShowFilterDialog(HWND parent); // <-- Forward declaration
+void ShowTabControls(HWND hwnd, int tabIndex);
+void SaveAllSettings(HWND hwnd);
+void ApplyDarkThemeToControls(HWND hwnd, HFONT hTitleFont, HFONT hLabelFont, HFONT hControlFont);
+void ConfigureFullPerformance(); // Configura para máximo rendimiento
+void ConfigureFullLowResources(); // Configura para mínimo consumo
+
+
 
 // ===============================
 // Funciones de optimización de rendimiento
@@ -241,18 +352,14 @@ bool ShouldRedraw(); // Determina si se debe redibujar basado en throttling
 void OptimizeProcessPriority(); // Optimiza la prioridad del proceso
 void ResetPerformanceCounters(); // Resetea contadores de rendimiento
 
-// Esta función cambia el orden de las ventanas en la pantalla (Z-order).
-// Es como when you put one sheet on top of another: the one on top is seen first.
-void SetWindowsZOrder(const std::vector<WindowInfo>& windows) {
-    // Recorremos las ventanas de atrás hacia adelante para que queden en el orden correcto.
-    // Es como apilar cartas: la última que ponés queda arriba.
-    for (int i = (int)windows.size() - 1; i >= 0; --i) {
-        HWND hwnd = windows[i].hwnd; // Agarramos el handle de la ventana.
-        BOOL res = SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); // La ponemos arriba de todo.
-        // Si falla, simplemente ignoramos el error (ya no hay logging).
-        (void)res; // Evitar warning de variable no usada si se compila en release.
-    }
-}
+// ===============================
+// Funciones para detección de ventanas cerradas
+// ===============================
+LRESULT CALLBACK WindowHookProc(int nCode, WPARAM wParam, LPARAM lParam); // Hook para detectar cierre de ventanas
+void InstallWindowHook(); // Instala el hook para detectar ventanas cerradas
+void UninstallWindowHook(); // Desinstala el hook
+
+// Función SetWindowsZOrder removida - no se utilizaba
 
 // Esta función es como un filtro: Windows la llama para cada ventana que encuentra.
 // Nosotros decidimos cuáles queremos mostrar en nuestra grilla.
@@ -260,24 +367,75 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
     HWND excludeHwnd = (HWND)lParam; // La ventana que no queremos mostrar (nuestro overlay).
     if (hwnd == excludeHwnd) return TRUE; // Si es nuestro overlay, la saltamos.
     if (!IsWindowVisible(hwnd)) return TRUE; // Si no se ve, la saltamos.
+    
     // Solo mostrar ventanas del escritorio virtual actual (Windows 10+).
     if (g_vdm) {
         BOOL onCurrent = FALSE;
         if (FAILED(g_vdm->IsWindowOnCurrentVirtualDesktop(hwnd, &onCurrent)) || !onCurrent)
             return TRUE; // Si no está en este escritorio, la saltamos.
     }
-    // Excluir ventanas que no aparecen en la barra de tareas (tool windows).
-    LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE); // Estilos extendidos de la ventana.
-    if (exStyle & WS_EX_TOOLWINDOW) return TRUE; // Si es una tool window, la saltamos.
-    HWND owner = GetWindow(hwnd, GW_OWNER); // Dueño de la ventana.
-    if (!((exStyle & WS_EX_APPWINDOW) || (!owner && (GetWindowLongPtr(hwnd, GWL_STYLE) & WS_OVERLAPPEDWINDOW))))
-        return TRUE; // Si no aparece en la barra de tareas, la saltamos.
-    wchar_t title[256]; // Buffer para el título.
-    GetWindowTextW(hwnd, title, 256); // Sacamos el título de la ventana.
-    if (wcslen(title) == 0) return TRUE; // Si no tiene título, la saltamos.
-    wchar_t className[128]; // Buffer para la clase.
-    GetClassNameW(hwnd, className, 128); // Sacamos la clase de la ventana.
-    g_windows.push_back({hwnd, title, className}); // La agregamos a nuestra lista.
+    
+    // Obtener información de la ventana
+    wchar_t title[256];
+    GetWindowTextW(hwnd, title, 256);
+    wchar_t className[128];
+    GetClassNameW(hwnd, className, 128);
+    
+    // Si no tiene título, la saltamos
+    if (wcslen(title) == 0) return TRUE;
+    
+    // Obtener estilos de la ventana
+    LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    
+    // Criterios más inclusivos para capturar más aplicaciones
+    bool shouldInclude = false;
+    
+    // Incluir si es una ventana de aplicación principal
+    if (exStyle & WS_EX_APPWINDOW) {
+        shouldInclude = true;
+    }
+    // Incluir si es una ventana principal sin dueño
+    else if (!owner && (style & WS_OVERLAPPEDWINDOW)) {
+        shouldInclude = true;
+    }
+    // Incluir si tiene un dueño pero es una ventana principal
+    else if (owner && (style & WS_OVERLAPPEDWINDOW)) {
+        shouldInclude = true;
+    }
+    // Incluir si es una ventana de diálogo modal
+    else if (style & WS_DLGFRAME) {
+        shouldInclude = true;
+    }
+    // Incluir si es una ventana de aplicación con título significativo
+    else if (wcslen(title) > 0 && !(exStyle & WS_EX_TOOLWINDOW)) {
+        // Verificar si parece ser una aplicación principal por su título
+        if (wcsstr(title, L" - ") || wcsstr(title, L" | ") || wcsstr(title, L" — ")) {
+            shouldInclude = true;
+        }
+        // Incluir si el título es suficientemente largo (probablemente una aplicación)
+        else if (wcslen(title) > 10) {
+            shouldInclude = true;
+        }
+    }
+    
+    // Excluir solo tool windows muy específicas
+    if (exStyle & WS_EX_TOOLWINDOW) {
+        // Pero incluir algunas tool windows que pueden ser aplicaciones útiles
+        if (wcsstr(className, L"ConsoleWindowClass") || 
+            wcsstr(className, L"Console") ||
+            wcsstr(className, L"Terminal")) {
+            shouldInclude = true;
+        } else {
+            shouldInclude = false;
+        }
+    }
+    
+    if (shouldInclude) {
+        g_allWindows.push_back({hwnd, title, className});
+    }
+    
     return TRUE; // Seguimos buscando más ventanas.
 }
 
@@ -287,12 +445,28 @@ std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd) {
     DWORD currentTime = GetTickCount();
     
     // Optimización: cache de ventanas para evitar enumeración excesiva
-    if (currentTime - g_lastWindowEnumTime < g_windowCacheTimeout && !g_windows.empty()) {
-        return g_windows; // Retornar cache si no ha expirado
+    // Solo usar cache si estamos en modo persistente (Alt+A) y no ha pasado mucho tiempo
+    if (currentTime - g_lastWindowEnumTime < g_windowCacheTimeout && !g_allWindows.empty() && g_persistentFilterMode) {
+        // Solo usar cache si estamos en modo persistente (Alt+A)
+        if (g_filteringEnabled) {
+            ApplyFilters();
+            return g_filteredWindows;
+        } else {
+            return g_allWindows;
+        }
     }
     
-    g_windows.clear(); // Limpiamos la lista anterior.
+    g_allWindows.clear(); // Limpiamos la lista anterior.
     EnumWindows(EnumWindowsProc, (LPARAM)excludeHwnd); // Buscamos todas las ventanas.
+    
+    // Siempre usar todas las ventanas como base
+    g_windows = g_allWindows;
+    
+    // Aplicar filtros solo si estamos en modo persistente (Alt+A)
+    if (g_filteringEnabled && g_persistentFilterMode) {
+        ApplyFilters();
+    }
+    
     if (!g_dynamicOrder && !g_gridOrder.empty()) { // Si tenemos un orden guardado y no es dinámico.
         ApplyGridOrder(g_windows, g_gridOrder); // Aplicamos el orden guardado.
     }
@@ -695,6 +869,7 @@ int ShowNumberInputDialog(HWND parent, const wchar_t* prompt) {
 
 // Variables para manejar el estado de la aplicación y el ícono de la bandeja.
 static bool g_suspended = false; // Estado de suspensión (si está pausada o no).
+static bool g_altAEnabled = true; // Estado de habilitación de Alt+A (si está activo o no).
 static NOTIFYICONDATA nid = {0}; // Estructura para el ícono de la bandeja del sistema.
 
 // Esta función crea un ícono cuadrado rojo en memoria.
@@ -814,6 +989,63 @@ public:
 // Variable para el mensaje de creación de la barra de tareas.
 UINT WM_TASKBARCREATED = 0; // Mensaje que se envía cuando se crea la barra de tareas.
 
+// ===============================
+// Implementación de funciones para detección de ventanas cerradas
+// ===============================
+
+// Hook para detectar cuando se cierran ventanas
+LRESULT CALLBACK WindowHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode < 0) {
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    
+    // Detectar cuando se cierra una ventana
+    if (wParam == WM_DESTROY || wParam == WM_CLOSE) {
+        HWND hwnd = (HWND)lParam;
+        if (hwnd && hwnd != g_mainHwnd) {
+            // Marcar que una ventana se cerró
+            g_windowClosed = true;
+            
+            // Enviar mensaje personalizado a la ventana principal
+            if (g_mainHwnd) {
+                PostMessageW(g_mainHwnd, WM_TIMER, 300, 0);
+            }
+        }
+    }
+    
+    // También detectar cuando se oculta una ventana (puede indicar que se está cerrando)
+    if (wParam == WM_SHOWWINDOW && lParam == FALSE) {
+        HWND hwnd = (HWND)lParam;
+        if (hwnd && hwnd != g_mainHwnd) {
+            // Verificar si la ventana realmente se cerró
+            if (!IsWindow(hwnd)) {
+                g_windowClosed = true;
+                if (g_mainHwnd) {
+                    PostMessageW(g_mainHwnd, WM_TIMER, 300, 0);
+                }
+            }
+        }
+    }
+    
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+// Instala el hook para detectar ventanas cerradas
+void InstallWindowHook() {
+    if (!g_windowHook) {
+        g_windowHook = SetWindowsHookEx(WH_CALLWNDPROC, WindowHookProc, 
+                                       GetModuleHandle(nullptr), GetCurrentThreadId());
+    }
+}
+
+// Desinstala el hook
+void UninstallWindowHook() {
+    if (g_windowHook) {
+        UnhookWindowsHookEx(g_windowHook);
+        g_windowHook = nullptr;
+    }
+}
+
 // Esta es la función principal de la aplicación Windows.
 // Es como el punto de entrada: acá empieza todo cuando ejecutás el programa.
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
@@ -831,6 +1063,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     
     // Cargar configuración desde INI
     LoadConfiguration();
+    
+    // Cargar configuración de filtros
+    LoadFilterSettings();
     
     // Inicializar optimizaciones de rendimiento
     LoadPerformanceSettings();
@@ -867,8 +1102,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // SetWindowRgn(hwnd, rgn, FALSE); // Comentado: sin región personalizada para mejor rendimiento.
     CenterOverlayWindow(hwnd, g_overlayWidth, g_overlayHeight); // Centramos la ventana en la pantalla.
     LoadGridOrder(g_gridOrder); // Cargamos el orden guardado de las ventanas.
-    RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL, VK_DECIMAL); // Registramos el atajo Ctrl+Numpad.
+    // RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL, VK_DECIMAL); // Removido: atajo Ctrl+Numpad.
     RegisterHotKey(hwnd, HOTKEY_ID_ALTQ, MOD_ALT, 'Q'); // Registramos el atajo Alt+Q.
+    RegisterHotKey(hwnd, HOTKEY_ID_ALTA, MOD_ALT, 'A'); // Registramos el atajo Alt+A (filtro persistente).
+    
+    // Instalar hook para detectar ventanas cerradas
+    InstallWindowHook();
     
     // Inicializar timer de limpieza automática de rendimiento
     SetTimer(hwnd, 300, g_cleanupInterval, NULL);
@@ -920,8 +1159,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Limpieza al salir de la aplicación.
     if (g_vdm) g_vdm->Release(); // Liberamos el administrador de escritorios virtuales.
     CoUninitialize(); // Desinicializamos COM.
-    UnregisterHotKey(hwnd, HOTKEY_ID); // Desregistramos el atajo Ctrl+Numpad.
+    // UnregisterHotKey(hwnd, HOTKEY_ID); // Removido: atajo Ctrl+Numpad.
     UnregisterHotKey(hwnd, HOTKEY_ID_ALTQ); // Desregistramos el atajo Alt+Q.
+    UnregisterHotKey(hwnd, HOTKEY_ID_ALTA); // Desregistramos el atajo Alt+A.
     
     // Limpiar timer de rendimiento
     KillTimer(hwnd, 300);
@@ -953,6 +1193,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 GetCursorPos(&pt); // Obtenemos la posición del cursor.
                 HMENU hMenu = CreatePopupMenu(); // Creamos un menú popup.
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"Settings...");
+                AppendMenuW(hMenu, MF_STRING, ID_TRAY_FILTERS, L"Filters...");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING | (g_altAEnabled ? MF_CHECKED : 0), ID_TRAY_TOGGLE_ALTA, g_altAEnabled ? L"Alt+A: ON" : L"Alt+A: OFF"); // Toggle para Alt+A
+                AppendMenuW(hMenu, MF_STRING | (g_dynamicOrder ? MF_CHECKED : 0), ID_TRAY_TOGGLE_DYNAMIC_MODE, g_dynamicOrder ? L"Dynamic Mode: ON" : L"Fix Z-order(Not Dynamic): ON"); // Toggle para modo dinámico
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, ID_TRAY_FULL_PERFORMANCE, L"Full Performance"); // Configuración de máximo rendimiento
+                AppendMenuW(hMenu, MF_STRING, ID_TRAY_FULL_LOW_RESOURCES, L"Full Low Resources"); // Configuración de mínimo consumo
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING | (g_suspended ? MF_CHECKED : 0), ID_TRAY_SUSPEND, g_suspended ? L"Reanudar" : L"Suspend"); // Opción de suspender/reanudar.
                 AppendMenuW(hMenu, MF_STRING, ID_TRAY_RESTART, L"Restart"); // Opción de reiniciar.
@@ -964,6 +1211,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 DestroyMenu(hMenu); // Destruimos el menú.
                 if (cmd == ID_TRAY_SETTINGS) {
                     ShowSettingsDialog(hwnd);
+                } else if (cmd == ID_TRAY_FILTERS) {
+                    ShowFilterDialog(hwnd);
+                } else if (cmd == ID_TRAY_TOGGLE_ALTA) { // Si eligieron toggle Alt+A
+                    g_altAEnabled = !g_altAEnabled; // Cambiar estado de Alt+A
+                    SaveFilterSettings(); // Guardar el nuevo estado en el INI
+                    // Actualizar el texto del menú para la próxima vez
+                } else if (cmd == ID_TRAY_TOGGLE_DYNAMIC_MODE) { // Si eligieron toggle modo dinámico
+                    g_dynamicOrder = !g_dynamicOrder; // Cambiar estado del modo dinámico
+                    SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]");
+                    InvalidateGrid(hwnd); // Redibujar la grilla
+                    SaveFilterSettings(); // Guardar el nuevo estado en el INI
                 } else if (cmd == ID_TRAY_SUSPEND) { // Si eligieron suspender.
                     g_suspended = !g_suspended; // Cambiamos el estado de suspensión.
                 } else if (cmd == ID_TRAY_EXIT) { // Si eligieron salir.
@@ -978,12 +1236,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     MonitorMemoryUsage(); // Verificar uso de memoria
                     CheckPerformanceMode(); // Ajustar modo de rendimiento
                     ResetPerformanceCounters(); // Resetear contadores
+                } else if (cmd == ID_TRAY_FULL_PERFORMANCE) { // Si eligieron máximo rendimiento
+                    ConfigureFullPerformance(); // Configurar para máximo rendimiento
+                } else if (cmd == ID_TRAY_FULL_LOW_RESOURCES) { // Si eligieron mínimo consumo
+                    ConfigureFullLowResources(); // Configurar para mínimo consumo
                 }
             }
             break;
         case WM_HOTKEY: // Mensaje cuando se presiona un atajo de teclado registrado.
             if (g_suspended) return 0; // Si está suspendido, ignoramos los atajos.
-            if (wParam == HOTKEY_ID || wParam == HOTKEY_ID_ALTQ) { // Si es nuestro atajo (Ctrl+Numpad o Alt+Q).
+            if (wParam == HOTKEY_ID_ALTQ || (wParam == HOTKEY_ID_ALTA && g_altAEnabled)) { // Si es nuestro atajo (Alt+Q, o Alt+A solo si está habilitado).
                 if (IsWindowVisible(hwnd)) { // Si la superposición está abierta.
                     // Actúa como Tab: mueve la selección a la siguiente miniatura.
                     auto& windows = g_windows; // Referencia a la lista de ventanas.
@@ -1004,19 +1266,98 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     MonitorMemoryUsage(); // Verificar uso de memoria
                     UnregisterAllThumbnails(); // Borramos todas las miniaturas anteriores.
                     g_windows = EnumerateWindows(hwnd); // Enumeramos las ventanas actuales.
-                    RegisterThumbnails(hwnd, g_windows); // Creamos las nuevas miniaturas.
+                    
+                    // Configurar comportamiento según el atajo usado
+                    if (wParam == HOTKEY_ID_ALTQ) { // Si fue Alt+Q
+                        g_lastHotkey = 2;
+                        g_persistentFilterMode = false; // Desactivar modo persistente
+                        g_filteringEnabled = false; // Desactivar filtros
+                        g_filterText.clear(); // Limpiar filtro
+                        // Para Alt+Q, asegurar que se usen todas las ventanas sin filtros
+                        g_filteredWindows.clear(); // Limpiar ventanas filtradas
+                        
+                        // Restaurar configuración de filtros por defecto
+                        g_filterByTitle = true;
+                        g_filterByClassName = true;
+                        g_filterByProcessName = true;
+                        g_filterCaseSensitive = false;
+                        g_filterExcludeHidden = true;
+                        g_filterExcludeMinimized = false;
+                        
+                        // Forzar nueva enumeración para Alt+Q (evitar cache)
+                        g_lastWindowEnumTime = 0;
+                        
+                        // Para Alt+Q, registrar miniaturas en g_windows
+                        RegisterThumbnails(hwnd, g_windows);
+                        
+                        SetTimer(hwnd, 100, 50, NULL); // Timer cada 50ms para Alt+Q
+                    } else if (wParam == HOTKEY_ID_ALTA) { // Si fue Alt+A
+                        g_lastHotkey = 3;
+                        g_persistentFilterMode = true;
+                        g_filteringEnabled = true;
+                        
+                        // Asegurar que los filtros estén habilitados para Alt+A
+                        g_filterByTitle = true;
+                        g_filterByClassName = true;
+                        g_filterByProcessName = true;
+                        
+                        // Si ya estamos en modo persistente, siempre comenzar en el primer thumbnail
+                        if (g_quickFilterEdit) {
+                            // Siempre comenzar en el primer thumbnail cuando se abre el overlay
+                            g_selectedIndex = 0;
+                            g_hoverIndex = 0;
+                            InvalidateGrid(hwnd);
+                        } else {
+                            // Primera vez: crear el control y seleccionar el primer thumbnail
+                            g_filterText.clear(); // Limpiar filtro anterior
+                            
+                            // Crear un control estático para mostrar el texto del filtro (sin tomar foco)
+                            g_quickFilterEdit = CreateWindowW(L"STATIC", L"", 
+                                WS_CHILD | WS_VISIBLE | SS_CENTER,
+                                (OVERLAY_WIDTH - 400) / 2, 15, 400, 30, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+                            
+                            // Configurar fuente y estilo
+                            HFONT hFont = CreateFontW(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+                            SendMessage(g_quickFilterEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+                            
+                            // Inicializar selección en el primer thumbnail
+                            g_selectedIndex = 0;
+                            g_hoverIndex = 0;
+                            
+                            // Aplicar filtros después de que todo esté configurado
+                            ApplyFilters();
+                        }
+                        
+                        // Para Alt+A, registrar miniaturas en g_filteredWindows después de aplicar filtros
+                        if (!g_filteredWindows.empty()) {
+                            RegisterThumbnails(hwnd, g_filteredWindows);
+                        } else {
+                            RegisterThumbnails(hwnd, g_windows);
+                        }
+                        
+                        // No enfocar el control - mantener el foco en la ventana principal
+                        SetFocus(hwnd);
+                    } else { // Si fue Ctrl+Numpad
+                        g_lastHotkey = 1;
+                        // Para Ctrl+Numpad, registrar miniaturas en g_windows
+                        RegisterThumbnails(hwnd, g_windows);
+                    }
+                    
+                    // Iniciamos timer para verificar teclas del numpad.
+                    SetTimer(hwnd, 200, 50, NULL); // Timer cada 50ms para teclas del numpad.
+                    
+                    // Iniciamos timer para verificar ventanas cerradas
+                    SetTimer(hwnd, 300, 500, NULL); // Timer cada 500ms para verificar ventanas cerradas
+                    
+                    // Timer adicional más frecuente para verificar ventanas cerradas
+                    SetTimer(hwnd, 400, 200, NULL); // Timer cada 200ms para verificación rápida
+                    
                     ShowWindow(hwnd, SW_SHOW); // Mostramos la superposición.
                     SetForegroundWindow(hwnd); // La ponemos al frente.
                     SetFocus(hwnd); // Aseguramos que el overlay reciba las teclas.
                     // Agregamos un pequeño delay para asegurar que el foco tome efecto.
                     Sleep(10); // Esperamos 10 milisegundos.
-                    g_lastHotkey = (wParam == HOTKEY_ID) ? 1 : 2; // Guardamos qué atajo se usó.
-                    // Iniciamos timer para Alt+Q para detectar cuando se suelta Alt.
-                    if (wParam == HOTKEY_ID_ALTQ) { // Si fue Alt+Q.
-                        SetTimer(hwnd, 100, 50, NULL); // Timer cada 50ms.
-                    }
-                    // Iniciamos timer para verificar teclas del numpad.
-                    SetTimer(hwnd, 200, 50, NULL); // Timer cada 50ms para teclas del numpad.
                 }
                 return 0; // No procesamos más.
             }
@@ -1035,6 +1376,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SwitchToThisWindow(windows[g_selectedIndex].hwnd, TRUE); // Usamos el método alternativo.
                     }
                 }
+                ClearSearchBox();
                 ShowWindow(hwnd, SW_HIDE); // Ocultamos la superposición.
                 g_lastHotkey = 0; // Reseteamos el último atajo.
                 KillTimer(hwnd, 100); // Limpiamos el timer de Alt+Q.
@@ -1056,6 +1398,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             SwitchToThisWindow(windows[g_selectedIndex].hwnd, TRUE); // Usamos el método alternativo.
                         }
                     }
+                ClearSearchBox();
                     ShowWindow(hwnd, SW_HIDE); // Ocultamos la superposición.
                     g_lastHotkey = 0; // Reseteamos el último atajo.
                     KillTimer(hwnd, 100); // Limpiamos el timer de Alt+Q.
@@ -1077,10 +1420,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SwitchToThisWindow(windows[g_selectedIndex].hwnd, TRUE); // Usamos el método alternativo.
                     }
                 }
+                ClearSearchBox();
                 ShowWindow(hwnd, SW_HIDE); // Ocultamos la superposición.
                 g_lastHotkey = 0; // Reseteamos el último atajo.
                 KillTimer(hwnd, 100); // Limpiamos el timer de Alt+Q.
                 return 0; // No procesamos más.
+            }
+            // Si fue Alt+A (modo persistente), no cerrar el overlay cuando se suelta Alt
+            if (IsWindowVisible(hwnd) && g_lastHotkey == 3 && wParam == VK_MENU) {
+                // En modo persistente, solo resetear el estado pero mantener el overlay abierto
+                g_lastHotkey = 0;
+                return 0;
             }
             break;
             
@@ -1373,6 +1723,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (!g_dynamicOrder) {
                         HMENU hMenu = CreatePopupMenu();
                         AppendMenuW(hMenu, MF_STRING, 1, windows[idx].pinned ? L"Despin" : L"Pin");
+                        AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                        AppendMenuW(hMenu, MF_STRING, 2, L"Exclude Process");
+                        AppendMenuW(hMenu, MF_STRING, 3, L"Exclude Class");
                         POINT pt = { x, y };
                         ClientToScreen(hwnd, &pt);
                         int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, NULL);
@@ -1382,6 +1735,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             SaveGridOrder(windows);
                             LoadGridOrder(g_gridOrder);
                             ApplyGridOrder(windows, g_gridOrder);
+                            InvalidateGrid(hwnd);
+                        } else if (cmd == 2) {
+                            // Excluir proceso
+                            std::wstring processName = GetProcessName(windows[idx].hwnd);
+                            if (!processName.empty()) {
+                                AddExcludedProcess(processName);
+                                InvalidateGrid(hwnd);
+                            }
+                        } else if (cmd == 3) {
+                            // Excluir clase
+                            AddExcludedClass(windows[idx].className);
                             InvalidateGrid(hwnd);
                         }
                     }
@@ -1492,7 +1856,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         return 0;
                     } else if (wParam == VK_UP) {
                         if (row > 0) g_selectedIndex -= cols;
-                        else g_selectedIndex = (col < n % cols) ? (rows - 1) * cols + col : (rows - 2) * cols + col;
+                        else g_selectedIndex = (rows - 1) * cols + col; // Wrap-around: ir a la última fila, misma columna
                         g_selectedIndex = (g_selectedIndex + n) % n;
                         g_hoverIndex = g_selectedIndex;
                         scrollToSelected();
@@ -1500,7 +1864,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         return 0;
                     } else if (wParam == VK_DOWN) {
                         if (row < rows - 1 && g_selectedIndex + cols < n) g_selectedIndex += cols;
-                        else g_selectedIndex = col;
+                        else g_selectedIndex = col; // Wrap-around: ir a la primera fila, misma columna
                         g_selectedIndex = (g_selectedIndex + n) % n;
                         g_hoverIndex = g_selectedIndex;
                         scrollToSelected();
@@ -1511,17 +1875,100 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             // Si no está Alt presionado, ignorar las flechas
             if (wParam == VK_ESCAPE) {
+                // Si estamos en modo filtro persistente (Alt+A), cerrar el overlay
+                if (g_persistentFilterMode) {
+                    g_persistentFilterMode = false;
+                    g_filteringEnabled = false;
+                    g_filterText.clear();
+                    ApplyFilters();
+                ShowWindow(hwnd, SW_HIDE);
+                    g_lastHotkey = 0;
+                KillTimer(hwnd, 100);
+                KillTimer(hwnd, 200);
+                return 0;
+            }
                 ShowWindow(hwnd, SW_HIDE);
                 KillTimer(hwnd, 100);
                 KillTimer(hwnd, 200);
                 return 0;
             }
-            // Alterna el orden dinámico/persistente con F2
-            if (wParam == VK_F2) {
-                g_dynamicOrder = !g_dynamicOrder;
-                SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]");
+            // Alterna el orden dinámico/persistente con F2 - REMOVIDO
+            // if (wParam == VK_F2) {
+            //     g_dynamicOrder = !g_dynamicOrder;
+            //     SetWindowTextW(hwnd, g_dynamicOrder ? L"BetterAltTab_Unnamed10110 [Dynamic Order]" : L"BetterAltTab_Unnamed10110 [PERSISTENT Z-ORDER MODE]");
+            //     InvalidateGrid(hwnd);
+            //     return 0;
+            // }
+            // Alterna el filtrado con F3
+            if (wParam == VK_F3) {
+                ToggleFiltering();
                 InvalidateGrid(hwnd);
                 return 0;
+            }
+            // Activar filtro rápido con Ctrl+F
+            if (wParam == 'F' && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+                if (!g_quickFilterActive) {
+                    g_quickFilterActive = true;
+                    g_filteringEnabled = true;
+                    
+                    // Crear control de entrada del filtro rápido
+                    g_quickFilterEdit = CreateWindowW(L"EDIT", g_filterText.c_str(), 
+                        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT,
+                        10, 40, 200, 25, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+                    
+                    // Configurar fuente y estilo
+                    HFONT hFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                        OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+                    SendMessage(g_quickFilterEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+                    
+                    SetFocus(g_quickFilterEdit);
+                    SendMessage(g_quickFilterEdit, EM_SETSEL, 0, -1);
+                }
+                return 0;
+            }
+            
+            // Navegación con flechas en modo filtro persistente
+            if (g_persistentFilterMode && g_quickFilterEdit) {
+                auto& windows = g_filteringEnabled && !g_filterText.empty() ? g_filteredWindows : g_windows;
+                int n = (int)windows.size();
+                if (n > 0) {
+                    int cols = g_fixedCols;
+                    int rows = (n + cols - 1) / cols;
+                    int row = g_selectedIndex / cols;
+                    int col = g_selectedIndex % cols;
+                    
+                    if (wParam == VK_LEFT) {
+                        if (col > 0) g_selectedIndex--;
+                        else if (row > 0) g_selectedIndex = (row - 1) * cols + (cols - 1);
+                        else g_selectedIndex = n - 1; // Circular: si es el primero, va al último
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_RIGHT) {
+                        if (col < cols - 1 && g_selectedIndex + 1 < n) g_selectedIndex++;
+                        else if (row < rows - 1) g_selectedIndex = (row + 1) * cols;
+                        else g_selectedIndex = 0; // Circular: si es el último, va al primero
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_UP) {
+                        if (row > 0) g_selectedIndex -= cols;
+                        else g_selectedIndex = (rows - 1) * cols + col; // Wrap-around: ir a la última fila, misma columna
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    } else if (wParam == VK_DOWN) {
+                        if (row < rows - 1 && g_selectedIndex + cols < n) g_selectedIndex += cols;
+                        else g_selectedIndex = col; // Wrap-around: ir a la primera fila, misma columna
+                        g_selectedIndex = (g_selectedIndex + n) % n;
+                        g_hoverIndex = g_selectedIndex;
+                        InvalidateGrid(hwnd);
+                        return 0;
+                    }
+                }
             }
             break;
         }
@@ -1571,7 +2018,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         return 0;
                     } else if (wParam == VK_UP) {
                         if (row > 0) g_selectedIndex -= cols;
-                        else g_selectedIndex = (col < n % cols) ? (rows - 1) * cols + col : (rows - 2) * cols + col;
+                        else g_selectedIndex = (rows - 1) * cols + col; // Wrap-around: ir a la última fila, misma columna
                         g_selectedIndex = (g_selectedIndex + n) % n;
                         g_hoverIndex = g_selectedIndex;
                         scrollToSelected();
@@ -1588,6 +2035,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 }
             }
+            
+            // Si se presiona Alt en modo filtro persistente, activar la ventana seleccionada
+            if (g_persistentFilterMode && g_quickFilterEdit && wParam == VK_MENU) {
+                // Activar la ventana seleccionada (usar ventanas filtradas si hay filtro activo)
+                auto& windows = g_filteringEnabled && !g_filterText.empty() ? g_filteredWindows : g_windows;
+                int n = (int)windows.size();
+                
+                // Si no hay ventanas filtradas, no hacer nada
+                if (n == 0) {
+                    return 0;
+                }
+                
+                // Asegurar que el índice seleccionado esté dentro de los límites
+                int selectedIndex = (g_selectedIndex >= 0 && g_selectedIndex < n) ? g_selectedIndex : 0;
+                
+                if (IsIconic(windows[selectedIndex].hwnd)) {
+                    ShowWindow(windows[selectedIndex].hwnd, SW_RESTORE);
+                }
+                AllowSetForegroundWindow(ASFW_ANY);
+                if (!SetForegroundWindow(windows[selectedIndex].hwnd)) {
+                    SwitchToThisWindow(windows[selectedIndex].hwnd, TRUE);
+                }
+                
+                // Cerrar el overlay
+                ClearSearchBox();
+                ShowWindow(hwnd, SW_HIDE);
+                g_lastHotkey = 0;
+                KillTimer(hwnd, 100);
+                KillTimer(hwnd, 200);
+                return 0;
+            }
             break;
         }
         
@@ -1597,11 +2075,156 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         int n = (int)g_windows.size();
         // Remover el manejo de numpad number desde aquí
         if (wParam == VK_ESCAPE) {
+            // Si el filtro rápido está activo, cerrarlo primero
+            if (g_quickFilterActive) {
+                DestroyWindow(g_quickFilterEdit);
+                g_quickFilterEdit = nullptr;
+                g_quickFilterActive = false;
+                InvalidateGrid(hwnd);
+                return 0;
+            }
+            // Si estamos en modo filtro persistente, cerrar el overlay
+            if (g_persistentFilterMode) {
+                g_persistentFilterMode = false;
+                g_filteringEnabled = false;
+                g_filterText.clear();
+                g_placeholderActive = false;
+                if (g_quickFilterEdit) {
+                    DestroyWindow(g_quickFilterEdit);
+                    g_quickFilterEdit = nullptr;
+                }
+                ApplyFilters();
+            ShowWindow(hwnd, SW_HIDE);
+                g_lastHotkey = 0;
+            KillTimer(hwnd, 100);
+            KillTimer(hwnd, 200);
+            return 0;
+        }
+            ClearSearchBox();
             ShowWindow(hwnd, SW_HIDE);
             KillTimer(hwnd, 100);
             KillTimer(hwnd, 200);
             return 0;
         }
+        // Si se presiona Enter en el filtro rápido, aplicar el filtro
+        if (wParam == VK_RETURN && g_quickFilterActive) {
+            wchar_t filterText[256];
+            GetWindowTextW(g_quickFilterEdit, filterText, 256);
+            g_filterText = filterText;
+            SetFilterText(g_filterText);
+            
+            // Cerrar el filtro rápido
+            DestroyWindow(g_quickFilterEdit);
+            g_quickFilterEdit = nullptr;
+            g_quickFilterActive = false;
+            
+            InvalidateGrid(hwnd);
+            return 0;
+        }
+        // Si se presiona Enter en el filtro persistente, aplicar el filtro y activar la ventana seleccionada
+        if (wParam == VK_RETURN && g_persistentFilterMode && g_quickFilterEdit) {
+            wchar_t filterText[256];
+            GetWindowTextW(g_quickFilterEdit, filterText, 256);
+            g_filterText = filterText;
+            SetFilterText(g_filterText);
+            
+            // Re-registrar miniaturas solo para las ventanas filtradas
+            if (g_filteringEnabled && !g_filterText.empty()) {
+                // Limpiar miniaturas anteriores
+                UnregisterAllThumbnails();
+                // Registrar miniaturas solo para las ventanas filtradas
+                if (!g_filteredWindows.empty()) {
+                    RegisterThumbnails(hwnd, g_filteredWindows);
+                }
+            }
+            
+            InvalidateGrid(hwnd);
+            
+            // Activar la ventana seleccionada (usar ventanas filtradas si hay filtro activo)
+            auto& windows = g_filteringEnabled && !g_filterText.empty() ? g_filteredWindows : g_windows;
+            int n = (int)windows.size();
+            
+            // Si no hay ventanas filtradas, no hacer nada
+            if (n == 0) {
+                return 0;
+            }
+            
+            // Asegurar que el índice seleccionado esté dentro de los límites
+            int selectedIndex = (g_selectedIndex >= 0 && g_selectedIndex < n) ? g_selectedIndex : 0;
+            
+            if (IsIconic(windows[selectedIndex].hwnd)) {
+                ShowWindow(windows[selectedIndex].hwnd, SW_RESTORE);
+            }
+            AllowSetForegroundWindow(ASFW_ANY);
+            if (!SetForegroundWindow(windows[selectedIndex].hwnd)) {
+                SwitchToThisWindow(windows[selectedIndex].hwnd, TRUE);
+            }
+            
+            // Cerrar el overlay
+            ClearSearchBox();
+            ShowWindow(hwnd, SW_HIDE);
+            g_lastHotkey = 0;
+            KillTimer(hwnd, 100);
+            KillTimer(hwnd, 200);
+            return 0;
+        }
+        
+        // Capturar teclas para el filtro persistente (sin tomar foco)
+        if (g_persistentFilterMode && g_quickFilterEdit && wParam >= 32 && wParam < 127) {
+            // Agregar el carácter al texto del filtro
+            g_filterText += (wchar_t)wParam;
+            SetWindowTextW(g_quickFilterEdit, g_filterText.c_str());
+            
+            // Aplicar filtros
+            ApplyFilters();
+            
+            // Re-registrar miniaturas solo para las ventanas filtradas
+            if (g_filteringEnabled && !g_filterText.empty()) {
+                // Limpiar miniaturas anteriores
+                UnregisterAllThumbnails();
+                // Registrar miniaturas solo para las ventanas filtradas
+                if (!g_filteredWindows.empty()) {
+                    RegisterThumbnails(hwnd, g_filteredWindows);
+                }
+            }
+            
+            // Forzar actualización de miniaturas
+            InvalidateGrid(hwnd);
+            UpdateWindow(hwnd);
+            
+            return 0;
+        }
+        
+        // Manejar backspace para el filtro persistente
+        if (g_persistentFilterMode && g_quickFilterEdit && wParam == VK_BACK) {
+            if (!g_filterText.empty()) {
+                g_filterText.pop_back();
+                SetWindowTextW(g_quickFilterEdit, g_filterText.c_str());
+                
+                // Aplicar filtros
+                ApplyFilters();
+                
+                // Re-registrar miniaturas solo para las ventanas filtradas
+                if (g_filteringEnabled && !g_filterText.empty()) {
+                    // Limpiar miniaturas anteriores
+                    UnregisterAllThumbnails();
+                    // Registrar miniaturas solo para las ventanas filtradas
+                    if (!g_filteredWindows.empty()) {
+                        RegisterThumbnails(hwnd, g_filteredWindows);
+                    }
+                } else {
+                    // Si no hay filtro, mostrar todas las ventanas
+                    UnregisterAllThumbnails();
+                    RegisterThumbnails(hwnd, g_windows);
+                }
+                
+                // Forzar actualización de miniaturas
+                InvalidateGrid(hwnd);
+                UpdateWindow(hwnd);
+            }
+            return 0;
+        }
+
     }
     return 0;
         
@@ -1622,7 +2245,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             FillRect(memDC, &clientRect, bgBrush);
             DeleteObject(bgBrush);
             
-            auto& windows = EnumerateWindows(hwnd);
+            // Usar la lista correcta según el modo
+            auto& windows = (g_persistentFilterMode && g_filteringEnabled) ? g_filteredWindows : g_windows;
             SortWindowsForGrid(windows);
             int n = (int)windows.size();
             int cols = g_fixedCols;
@@ -1834,6 +2458,42 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 DeleteObject(borderBrush);
                 DeleteObject(rgn);
             }
+            
+            // Mostrar indicador de filtro activo (solo si no hay caja de búsqueda visible)
+            if (g_filteringEnabled && !g_quickFilterEdit) {
+                // Dibujar texto de estado del filtro en la esquina superior izquierda
+                HFONT hFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                    OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+                if (hFont) {
+                    HFONT oldFont = (HFONT)SelectObject(memDC, hFont);
+                    SetBkMode(memDC, TRANSPARENT);
+                    
+                    wchar_t filterStatus[256];
+                    if (g_persistentFilterMode) {
+                        if (!g_filterText.empty()) {
+                            swprintf_s(filterStatus, L"PERSISTENT MODE - Filter: %s (%d/%d windows) [Press ESC to close]", g_filterText.c_str(), (int)g_filteredWindows.size(), (int)g_allWindows.size());
+                        } else {
+                            swprintf_s(filterStatus, L"PERSISTENT MODE - Filters Active (%d/%d windows) [Press ESC to close]", (int)g_filteredWindows.size(), (int)g_allWindows.size());
+                        }
+                        SetTextColor(memDC, RGB(0, 255, 255)); // Cyan para modo persistente
+                    } else {
+                        if (!g_filterText.empty()) {
+                            swprintf_s(filterStatus, L"Filter: %s (%d/%d windows)", g_filterText.c_str(), (int)g_filteredWindows.size(), (int)g_allWindows.size());
+                        } else {
+                            swprintf_s(filterStatus, L"Filters Active (%d/%d windows)", (int)g_filteredWindows.size(), (int)g_allWindows.size());
+                        }
+                        SetTextColor(memDC, RGB(255, 255, 0)); // Amarillo para filtros normales
+                    }
+                    
+                    TextOutW(memDC, 10, 10, filterStatus, lstrlenW(filterStatus));
+                    
+                    SelectObject(memDC, oldFont);
+                    DeleteObject(hFont);
+                }
+            }
+            
+                            
+            
             // Usar BitBlt simple sin transparencia para mejor rendimiento
             BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, 
                    memDC, 0, 0, SRCCOPY);
@@ -1844,23 +2504,49 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         
+
+            
+        case WM_CTLCOLORSTATIC:
+            // Aplicar tema oscuro a las etiquetas estáticas
+            SetBkMode((HDC)wParam, TRANSPARENT);
+            SetTextColor((HDC)wParam, RGB(255, 255, 255));
+            return (LRESULT)CreateSolidBrush(RGB(0, 0, 0));
+        
         case WM_DESTROY:
             UnregisterThumbnails(g_windows);
+            UninstallWindowHook(); // Desinstalar hook de ventanas cerradas
             PostQuitMessage(0);
             return 0;
             
         case WM_ACTIVATE:
             if (wParam == WA_INACTIVE) {
+                // Si estamos en modo persistente, no cerrar el overlay
+                if (g_persistentFilterMode) {
+                    return 0;
+                }
                 ShowWindow(hwnd, SW_HIDE);
                 KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 KillTimer(hwnd, 200); // Limpiar timer de numpad keys
+                KillTimer(hwnd, 400); // Limpiar timer de verificación rápida
                 return 0;
             }
             break;
         case WM_KILLFOCUS:
+            // Cerrar filtro rápido si está activo
+            if (g_quickFilterActive) {
+                DestroyWindow(g_quickFilterEdit);
+                g_quickFilterEdit = nullptr;
+                g_quickFilterActive = false;
+            }
+            // Si estamos en modo persistente, no cerrar el overlay
+            if (g_persistentFilterMode) {
+                return 0;
+            }
+            ClearSearchBox();
             ShowWindow(hwnd, SW_HIDE);
             KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
             KillTimer(hwnd, 200); // Limpiar timer de numpad keys
+            KillTimer(hwnd, 400); // Limpiar timer de verificación rápida
             return 0;
         case WM_VIRTUAL_DESKTOP_CHANGED:
             // Recargar la lista de ventanas y la UI, pero NO recargar los datos persistentes
@@ -1881,6 +2567,107 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     g_lowResourceMode ? L"Low Resource" : L"Normal");
                 lstrcpyW(nid.szTip, tooltipText);
                 Shell_NotifyIcon(NIM_MODIFY, &nid);
+                
+                return 0;
+            }
+            
+            // Timer para verificar ventanas cerradas
+            if (wParam == 300) {
+                // Verificar si alguna ventana se cerró
+                bool windowsChanged = false;
+                
+                // Verificar ventanas en g_windows
+                for (auto it = g_windows.begin(); it != g_windows.end();) {
+                    if (!IsWindow(it->hwnd)) {
+                        // La ventana se cerró, removerla
+                        if (it->thumbnail) {
+                            DwmUnregisterThumbnail(it->thumbnail);
+                            g_thumbnailMap.erase(it->hwnd);
+                        }
+                        it = g_windows.erase(it);
+                        windowsChanged = true;
+                    } else {
+                        ++it;
+                    }
+                }
+                
+                // Verificar ventanas en g_filteredWindows
+                for (auto it = g_filteredWindows.begin(); it != g_filteredWindows.end();) {
+                    if (!IsWindow(it->hwnd)) {
+                        // La ventana se cerró, removerla
+                        if (it->thumbnail) {
+                            DwmUnregisterThumbnail(it->thumbnail);
+                            g_thumbnailMap.erase(it->hwnd);
+                        }
+                        it = g_filteredWindows.erase(it);
+                        windowsChanged = true;
+                    } else {
+                        ++it;
+                    }
+                }
+                
+                // Verificar también si g_windowClosed está activo
+                if (g_windowClosed) {
+                    g_windowClosed = false; // Resetear el flag
+                    windowsChanged = true;
+                }
+                
+                // Si hubo cambios, actualizar la interfaz
+                if (windowsChanged) {
+                    // Ajustar índices de selección si es necesario
+                    if (g_selectedIndex >= (int)g_windows.size()) {
+                        g_selectedIndex = max(0, (int)g_windows.size() - 1);
+                    }
+                    if (g_hoverIndex >= (int)g_windows.size()) {
+                        g_hoverIndex = max(0, (int)g_windows.size() - 1);
+                    }
+                    
+                    // Redibujar la grilla inmediatamente si el overlay está visible
+                    if (IsWindowVisible(hwnd)) {
+                        InvalidateGrid(hwnd);
+                        UpdateWindow(hwnd);
+                    }
+                }
+                
+                return 0;
+            }
+            
+            // Timer adicional para verificación rápida de ventanas cerradas
+            if (wParam == 400) {
+                // Verificación más agresiva de ventanas cerradas
+                bool windowsChanged = false;
+                
+                // Verificar solo las ventanas principales (más eficiente)
+                for (auto it = g_windows.begin(); it != g_windows.end();) {
+                    if (!IsWindow(it->hwnd)) {
+                        // La ventana se cerró, removerla
+                        if (it->thumbnail) {
+                            DwmUnregisterThumbnail(it->thumbnail);
+                            g_thumbnailMap.erase(it->hwnd);
+                        }
+                        it = g_windows.erase(it);
+                        windowsChanged = true;
+                    } else {
+                        ++it;
+                    }
+                }
+                
+                // Si hubo cambios, actualizar la interfaz inmediatamente
+                if (windowsChanged) {
+                    // Ajustar índices de selección si es necesario
+                    if (g_selectedIndex >= (int)g_windows.size()) {
+                        g_selectedIndex = max(0, (int)g_windows.size() - 1);
+                    }
+                    if (g_hoverIndex >= (int)g_windows.size()) {
+                        g_hoverIndex = max(0, (int)g_windows.size() - 1);
+                    }
+                    
+                    // Redibujar la grilla inmediatamente si el overlay está visible
+                    if (IsWindowVisible(hwnd)) {
+                        InvalidateGrid(hwnd);
+                        UpdateWindow(hwnd);
+                    }
+                }
                 
                 return 0;
             }
@@ -1940,6 +2727,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             // Timer para detectar teclas numpad cuando el overlay está visible
             else if (wParam == 200 && IsWindowVisible(hwnd)) {
+                // Actualizar filtro en tiempo real si está activo
+                if (g_quickFilterActive && g_quickFilterEdit) {
+                    wchar_t filterText[256];
+                    GetWindowTextW(g_quickFilterEdit, filterText, 256);
+                    if (g_filterText != filterText) {
+                        g_filterText = filterText;
+                        SetFilterText(g_filterText);
+                        InvalidateGrid(hwnd);
+                    }
+                }
+                // Actualizar filtro en tiempo real si está en modo persistente
+                if (g_persistentFilterMode && g_quickFilterEdit) {
+                    wchar_t filterText[256];
+                    GetWindowTextW(g_quickFilterEdit, filterText, 256);
+                    if (g_filterText != filterText) {
+                        g_filterText = filterText;
+                        SetFilterText(g_filterText);
+                        InvalidateGrid(hwnd);
+                    }
+                }
                 // Verificar si se presionó Ctrl+número
                 static bool ctrlWasDown = false;
                 bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -2345,6 +3152,95 @@ void ResetPerformanceCounters() {
     g_lowResourceMode = false;
 }
 
+void ConfigureFullPerformance() {
+    // Configuración para máximo rendimiento en laptop con 16GB+ RAM
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    
+    // Configuraciones de rendimiento máximo
+    WritePrivateProfileStringW(L"Performance", L"LowResourceMode", L"off", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailCache", L"50", exePath);
+    WritePrivateProfileStringW(L"Performance", L"NormalRefreshRate", L"16", exePath);
+    WritePrivateProfileStringW(L"Performance", L"LowResourceRefreshRate", L"50", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MinThumbnailSize", L"300", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MemoryThreshold", L"2048", exePath);
+    WritePrivateProfileStringW(L"Performance", L"CPUThreshold", L"95", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReserveMemory", L"true", exePath);
+    WritePrivateProfileStringW(L"Performance", L"OptimizePriority", L"true", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReduceVisualEffects", L"false", exePath);
+    WritePrivateProfileStringW(L"Performance", L"AutoCleanupInterval", L"60000", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailMemory", L"200", exePath);
+    
+    // Recargar configuración
+    LoadPerformanceSettings();
+    
+    // Aplicar cambios inmediatamente
+    g_lowResourceMode = false;
+    g_cleanupInterval = 60000;
+    g_maxThumbnailMemory = 200 * 1024 * 1024;
+    g_windowCacheTimeout = 10000;
+    
+    // Limpiar cache y optimizar
+    CleanupThumbnailCache();
+    OptimizeProcessPriority();
+    
+    // Mostrar notificación
+    MessageBoxW(NULL, L"Full Performance mode activated!\n\nConfiguration optimized for:\n- 16GB+ RAM systems\n- Maximum responsiveness\n- High quality thumbnails\n- Extended caching", L"BetterAltTab - Performance Mode", MB_OK | MB_ICONINFORMATION);
+}
+
+void ConfigureFullLowResources() {
+    // Configuración para mínimo consumo de recursos
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    
+    // Obtener información del sistema
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    GlobalMemoryStatusEx(&memInfo);
+    
+    DWORDLONG totalPhysMem = memInfo.ullTotalPhys;
+    DWORD memoryLoad = memInfo.dwMemoryLoad;
+    
+    // Configuraciones adaptativas según recursos disponibles
+    int maxMemory = (int)(totalPhysMem / (1024 * 1024)); // RAM total en MB
+    int maxCache = max(5, maxMemory / 100); // Cache proporcional a RAM
+    int cleanupInterval = max(5000, memoryLoad * 100); // Limpieza más frecuente si hay poca RAM
+    
+    // Configuraciones de bajo consumo
+    WritePrivateProfileStringW(L"Performance", L"LowResourceMode", L"on", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailCache", std::to_wstring(maxCache).c_str(), exePath);
+    WritePrivateProfileStringW(L"Performance", L"NormalRefreshRate", L"100", exePath);
+    WritePrivateProfileStringW(L"Performance", L"LowResourceRefreshRate", L"200", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MinThumbnailSize", L"150", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MemoryThreshold", L"256", exePath);
+    WritePrivateProfileStringW(L"Performance", L"CPUThreshold", L"60", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReserveMemory", L"false", exePath);
+    WritePrivateProfileStringW(L"Performance", L"OptimizePriority", L"false", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReduceVisualEffects", L"true", exePath);
+    WritePrivateProfileStringW(L"Performance", L"AutoCleanupInterval", std::to_wstring(cleanupInterval).c_str(), exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailMemory", std::to_wstring(maxMemory / 4).c_str(), exePath);
+    
+    // Recargar configuración
+    LoadPerformanceSettings();
+    
+    // Aplicar cambios inmediatamente
+    g_lowResourceMode = true;
+    g_cleanupInterval = cleanupInterval;
+    g_maxThumbnailMemory = (maxMemory / 4) * 1024 * 1024;
+    g_windowCacheTimeout = 2000;
+    
+    // Limpiar cache y optimizar
+    CleanupThumbnailCache();
+    ResetPerformanceCounters();
+    
+    // Mostrar notificación con información del sistema
+    wchar_t message[512];
+    swprintf_s(message, L"Full Low Resources mode activated!\n\nSystem Analysis:\n- Total RAM: %d MB\n- Memory Load: %d%%\n- Cache Size: %d thumbnails\n- Cleanup Interval: %d ms\n\nConfiguration optimized for:\n- Minimum resource usage\n- Maximum compatibility\n- Extended battery life", 
+               maxMemory, memoryLoad, maxCache, cleanupInterval);
+    
+    MessageBoxW(NULL, message, L"BetterAltTab - Low Resources Mode", MB_OK | MB_ICONINFORMATION);
+}
+
 // ============================================================
 //  resize de las miniaturas para que todas las columnas encajen en el overlay
 // ============================================================
@@ -2364,42 +3260,241 @@ void UpdatePreviewSize()
 #define PREVIEW_HEIGHT g_previewH
 
 LRESULT CALLBACK SettingsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static int currentTab = 0;
+    static HFONT hTitleFont, hLabelFont, hControlFont;
+    
     switch (msg) {
         case WM_CREATE: {
-            CreateWindowW(L"STATIC", L"Columns:", WS_CHILD | WS_VISIBLE, 10, 10, 100, 20, hwnd, (HMENU)IDC_COLUMNS_LABEL, nullptr, nullptr);
+            // Crear fuentes personalizadas para el tema dark OLED
+            hTitleFont = CreateFontW(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+            hLabelFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+            hControlFont = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, L"Segoe UI");
+            
+            // Título principal
+            CreateWindowW(L"STATIC", L"BetterAltTab Settings", WS_CHILD | WS_VISIBLE | SS_CENTER,
+                20, 20, 760, 30, hwnd, nullptr, nullptr, nullptr);
+            
+            // Crear botones de pestañas personalizados (sin TabControl)
+            CreateWindowW(L"BUTTON", L"General", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                20, 70, 120, 30, hwnd, (HMENU)1001, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Performance", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                150, 70, 120, 30, hwnd, (HMENU)1002, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"UI", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                280, 70, 120, 30, hwnd, (HMENU)1003, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Hotkeys", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                410, 70, 120, 30, hwnd, (HMENU)1004, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Advanced", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                540, 70, 120, 30, hwnd, (HMENU)1005, nullptr, nullptr);
+            
+            // Crear controles para la pestaña General (posición ajustada)
+            CreateWindowW(L"STATIC", L"Columns:", WS_CHILD | WS_VISIBLE, 40, 120, 120, 20, hwnd, (HMENU)IDC_COLUMNS_LABEL, nullptr, nullptr);
             wchar_t currentCols[4];
             _itow_s(g_fixedCols, currentCols, 4, 10);
-            CreateWindowW(L"EDIT", currentCols, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 120, 10, 50, 20, hwnd, (HMENU)IDC_COLUMNS_EDIT, nullptr, nullptr);
-            CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 80, 50, 80, 25, hwnd, (HMENU)IDC_APPLY_BUTTON, nullptr, nullptr);
+            CreateWindowW(L"EDIT", currentCols, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 170, 120, 60, 25, hwnd, (HMENU)IDC_COLUMNS_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Overlay Alpha:", WS_CHILD | WS_VISIBLE, 40, 160, 120, 20, hwnd, (HMENU)IDC_OVERLAY_ALPHA_LABEL, nullptr, nullptr);
+            wchar_t currentAlpha[4];
+            _itow_s(255, currentAlpha, 4, 10);
+            CreateWindowW(L"EDIT", currentAlpha, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 170, 160, 60, 25, hwnd, (HMENU)IDC_OVERLAY_ALPHA_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"BUTTON", L"Dynamic Order", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 200, 150, 25, hwnd, (HMENU)IDC_DYNAMIC_ORDER_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Save Window Order", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 240, 150, 25, hwnd, (HMENU)IDC_SAVE_WINDOW_ORDER_CHECK, nullptr, nullptr);
+            
+            // Crear controles para la pestaña Performance
+            CreateWindowW(L"STATIC", L"Low Resource Mode:", WS_CHILD | WS_VISIBLE, 40, 120, 140, 20, hwnd, (HMENU)IDC_LOW_RESOURCE_MODE_LABEL, nullptr, nullptr);
+            HWND hLowResourceCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 190, 120, 120, 100, hwnd, (HMENU)IDC_LOW_RESOURCE_MODE_COMBO, nullptr, nullptr);
+            SendMessage(hLowResourceCombo, CB_ADDSTRING, 0, (LPARAM)L"Auto");
+            SendMessage(hLowResourceCombo, CB_ADDSTRING, 0, (LPARAM)L"On");
+            SendMessage(hLowResourceCombo, CB_ADDSTRING, 0, (LPARAM)L"Off");
+            SendMessage(hLowResourceCombo, CB_SETCURSEL, 0, 0);
+            
+            CreateWindowW(L"STATIC", L"Max Thumbnail Cache:", WS_CHILD | WS_VISIBLE, 40, 160, 140, 20, hwnd, (HMENU)IDC_MAX_THUMBNAIL_CACHE_LABEL, nullptr, nullptr);
+            wchar_t currentCache[4];
+            _itow_s(20, currentCache, 4, 10);
+            CreateWindowW(L"EDIT", currentCache, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 190, 160, 60, 25, hwnd, (HMENU)IDC_MAX_THUMBNAIL_CACHE_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Normal Refresh Rate (ms):", WS_CHILD | WS_VISIBLE, 40, 200, 160, 20, hwnd, (HMENU)IDC_NORMAL_REFRESH_RATE_LABEL, nullptr, nullptr);
+            wchar_t currentRefresh[4];
+            _itow_s(25, currentRefresh, 4, 10);
+            CreateWindowW(L"EDIT", currentRefresh, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 210, 200, 60, 25, hwnd, (HMENU)IDC_NORMAL_REFRESH_RATE_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Auto Cleanup Interval (ms):", WS_CHILD | WS_VISIBLE, 40, 240, 160, 20, hwnd, (HMENU)IDC_AUTO_CLEANUP_INTERVAL_LABEL, nullptr, nullptr);
+            wchar_t currentCleanup[6];
+            _itow_s(30000, currentCleanup, 6, 10);
+            CreateWindowW(L"EDIT", currentCleanup, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 210, 240, 80, 25, hwnd, (HMENU)IDC_AUTO_CLEANUP_INTERVAL_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Max Thumbnail Memory (MB):", WS_CHILD | WS_VISIBLE, 40, 280, 160, 20, hwnd, (HMENU)IDC_MAX_THUMBNAIL_MEMORY_LABEL, nullptr, nullptr);
+            wchar_t currentMemory[4];
+            _itow_s(100, currentMemory, 4, 10);
+            CreateWindowW(L"EDIT", currentMemory, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 210, 280, 60, 25, hwnd, (HMENU)IDC_MAX_THUMBNAIL_MEMORY_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Window Cache Timeout (ms):", WS_CHILD | WS_VISIBLE, 40, 320, 160, 20, hwnd, (HMENU)IDC_WINDOW_CACHE_TIMEOUT_LABEL, nullptr, nullptr);
+            wchar_t currentTimeout[6];
+            _itow_s(10000, currentTimeout, 6, 10);
+            CreateWindowW(L"EDIT", currentTimeout, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 210, 320, 80, 25, hwnd, (HMENU)IDC_WINDOW_CACHE_TIMEOUT_EDIT, nullptr, nullptr);
+            
+            // Crear controles para la pestaña UI
+            CreateWindowW(L"BUTTON", L"Show Tray Icon", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 120, 150, 25, hwnd, (HMENU)IDC_SHOW_TRAY_ICON_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Show System Info", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 160, 150, 25, hwnd, (HMENU)IDC_SHOW_SYSTEM_INFO_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Show Window Count", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 200, 150, 25, hwnd, (HMENU)IDC_SHOW_WINDOW_COUNT_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Show Memory Usage", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 240, 150, 25, hwnd, (HMENU)IDC_SHOW_MEMORY_USAGE_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Show Performance Mode", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 280, 150, 25, hwnd, (HMENU)IDC_SHOW_PERFORMANCE_MODE_CHECK, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Tray Icon Size:", WS_CHILD | WS_VISIBLE, 40, 320, 120, 20, hwnd, (HMENU)IDC_TRAY_ICON_SIZE_LABEL, nullptr, nullptr);
+            HWND hTraySizeCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 170, 320, 100, 100, hwnd, (HMENU)IDC_TRAY_ICON_SIZE_COMBO, nullptr, nullptr);
+            SendMessage(hTraySizeCombo, CB_ADDSTRING, 0, (LPARAM)L"16");
+            SendMessage(hTraySizeCombo, CB_ADDSTRING, 0, (LPARAM)L"32");
+            SendMessage(hTraySizeCombo, CB_ADDSTRING, 0, (LPARAM)L"48");
+            SendMessage(hTraySizeCombo, CB_SETCURSEL, 0, 0);
+            
+            CreateWindowW(L"STATIC", L"Tray Icon Color:", WS_CHILD | WS_VISIBLE, 40, 360, 120, 20, hwnd, (HMENU)IDC_TRAY_ICON_COLOR_LABEL, nullptr, nullptr);
+            CreateWindowW(L"EDIT", L"00FF00", WS_CHILD | WS_VISIBLE | WS_BORDER, 170, 360, 100, 25, hwnd, (HMENU)IDC_TRAY_ICON_COLOR_EDIT, nullptr, nullptr);
+            
+            // Crear controles para la pestaña Hotkeys
+            CreateWindowW(L"STATIC", L"Alt+Q Key:", WS_CHILD | WS_VISIBLE, 40, 120, 120, 20, hwnd, (HMENU)IDC_ALTQ_KEY_LABEL, nullptr, nullptr);
+            CreateWindowW(L"EDIT", L"VK_Q", WS_CHILD | WS_VISIBLE | WS_BORDER, 170, 120, 100, 25, hwnd, (HMENU)IDC_ALTQ_KEY_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Alt+A Key:", WS_CHILD | WS_VISIBLE, 40, 160, 120, 20, hwnd, (HMENU)IDC_ALTA_KEY_LABEL, nullptr, nullptr);
+            CreateWindowW(L"EDIT", L"VK_A", WS_CHILD | WS_VISIBLE | WS_BORDER, 170, 160, 100, 25, hwnd, (HMENU)IDC_ALTA_KEY_EDIT, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Numpad Modifier:", WS_CHILD | WS_VISIBLE, 40, 200, 120, 20, hwnd, (HMENU)IDC_NUMPAD_MODIFIER_LABEL, nullptr, nullptr);
+            HWND hNumpadCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 170, 200, 120, 100, hwnd, (HMENU)IDC_NUMPAD_MODIFIER_COMBO, nullptr, nullptr);
+            SendMessage(hNumpadCombo, CB_ADDSTRING, 0, (LPARAM)L"VK_CONTROL");
+            SendMessage(hNumpadCombo, CB_ADDSTRING, 0, (LPARAM)L"VK_LCONTROL");
+            SendMessage(hNumpadCombo, CB_ADDSTRING, 0, (LPARAM)L"VK_RCONTROL");
+            SendMessage(hNumpadCombo, CB_SETCURSEL, 0, 0);
+            
+            // Crear controles para la pestaña Advanced
+            CreateWindowW(L"BUTTON", L"Debug Mode", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 120, 150, 25, hwnd, (HMENU)IDC_DEBUG_MODE_CHECK, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Event Logging", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 40, 160, 150, 25, hwnd, (HMENU)IDC_EVENT_LOGGING_CHECK, nullptr, nullptr);
+            
+            CreateWindowW(L"STATIC", L"Log Level:", WS_CHILD | WS_VISIBLE, 40, 200, 120, 20, hwnd, (HMENU)IDC_LOG_LEVEL_LABEL, nullptr, nullptr);
+            HWND hLogLevelCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 170, 200, 100, 100, hwnd, (HMENU)IDC_LOG_LEVEL_COMBO, nullptr, nullptr);
+            SendMessage(hLogLevelCombo, CB_ADDSTRING, 0, (LPARAM)L"1");
+            SendMessage(hLogLevelCombo, CB_ADDSTRING, 0, (LPARAM)L"2");
+            SendMessage(hLogLevelCombo, CB_ADDSTRING, 0, (LPARAM)L"3");
+            SendMessage(hLogLevelCombo, CB_ADDSTRING, 0, (LPARAM)L"4");
+            SendMessage(hLogLevelCombo, CB_ADDSTRING, 0, (LPARAM)L"5");
+            SendMessage(hLogLevelCombo, CB_SETCURSEL, 0, 0);
+            
+            // Botones de acción en la parte inferior
+            CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 600, 540, 80, 30, hwnd, (HMENU)IDC_APPLY_BUTTON, nullptr, nullptr);
+            CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 690, 540, 80, 30, hwnd, (HMENU)IDC_CANCEL_BUTTON, nullptr, nullptr);
+            
+            // Aplicar fuentes y estilos a todos los controles
+            ApplyDarkThemeToControls(hwnd, hTitleFont, hLabelFont, hControlFont);
+            
+            // Mostrar solo la primera pestaña inicialmente
+            ShowTabControls(hwnd, 0);
             return 0;
         }
+        
         case WM_COMMAND: {
-            if (LOWORD(wParam) == IDC_APPLY_BUTTON) {
-                wchar_t newColsStr[4];
-                GetDlgItemTextW(hwnd, IDC_COLUMNS_EDIT, newColsStr, 4);
-                int newCols = _wtoi(newColsStr);
-                if (newCols > 0 && newCols < 20) { 
-                    g_fixedCols = newCols;
-                    
-                    wchar_t exePath[MAX_PATH];
-                    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-                    PathRemoveFileSpecW(exePath);
-                    wcscat_s(exePath, L"\\BetterAltTab.ini");
-                    WritePrivateProfileStringW(L"General", L"Columns", newColsStr, exePath);
-                    
+            if (LOWORD(wParam) >= 1001 && LOWORD(wParam) <= 1005) {
+                // Cambio de pestaña
+                currentTab = LOWORD(wParam) - 1001;
+                ShowTabControls(hwnd, currentTab);
+                
+                // Actualizar estado visual de los botones de pestaña
+                for (int i = 1001; i <= 1005; i++) {
+                    HWND hButton = GetDlgItem(hwnd, i);
+                    if (hButton) {
+                        if (i == LOWORD(wParam)) {
+                            // Pestaña activa - resaltar
+                            SetWindowLong(hButton, GWL_STYLE, GetWindowLong(hButton, GWL_STYLE) | BS_PUSHLIKE);
+                            InvalidateRect(hButton, NULL, TRUE);
+                        } else {
+                            // Pestaña inactiva - normal
+                            SetWindowLong(hButton, GWL_STYLE, GetWindowLong(hButton, GWL_STYLE) & ~BS_PUSHLIKE);
+                            InvalidateRect(hButton, NULL, TRUE);
+                        }
+                    }
+                }
+                return 0;
+            } else if (LOWORD(wParam) == IDC_APPLY_BUTTON) {
+                SaveAllSettings(hwnd);
                     UpdatePreviewSize();
                     DestroyWindow(hwnd);
-                } else {
-                    MessageBoxW(hwnd, L"Please enter a number between 1 and 19.", L"Invalid Input", MB_OK | MB_ICONEXCLAMATION);
-                }
+            } else if (LOWORD(wParam) == IDC_CANCEL_BUTTON) {
+                DestroyWindow(hwnd);
             }
             return 0;
         }
+        
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            
+            // Fondo negro OLED
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+            HBRUSH blackBrush = CreateSolidBrush(RGB(0, 0, 0));
+            FillRect(hdc, &rect, blackBrush);
+            DeleteObject(blackBrush);
+            
+            // Borde blanco fino
+            HPEN whitePen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+            HPEN oldPen = (HPEN)SelectObject(hdc, whitePen);
+            HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+            SelectObject(hdc, oldPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(whitePen);
+            
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        
+        case WM_CTLCOLORSTATIC: {
+            HDC hdcStatic = (HDC)wParam;
+            SetBkColor(hdcStatic, RGB(0, 0, 0));
+            SetTextColor(hdcStatic, RGB(255, 255, 255));
+            return (LRESULT)CreateSolidBrush(RGB(0, 0, 0));
+        }
+        
+        case WM_CTLCOLOREDIT: {
+            HDC hdcEdit = (HDC)wParam;
+            SetBkColor(hdcEdit, RGB(20, 20, 20));
+            SetTextColor(hdcEdit, RGB(255, 255, 255));
+            return (LRESULT)CreateSolidBrush(RGB(20, 20, 20));
+        }
+        
+        case WM_CTLCOLORBTN: {
+            HDC hdcButton = (HDC)wParam;
+            if (GetDlgCtrlID((HWND)lParam) >= 1001 && GetDlgCtrlID((HWND)lParam) <= 1005) {
+                // Botones de pestaña - tema especial
+                if (GetDlgCtrlID((HWND)lParam) == currentTab + 1001) {
+                    // Pestaña activa
+                    SetBkColor(hdcButton, RGB(50, 50, 50));
+                    SetTextColor(hdcButton, RGB(255, 255, 255));
+                    return (LRESULT)CreateSolidBrush(RGB(50, 50, 50));
+                } else {
+                    // Pestaña inactiva
+                    SetBkColor(hdcButton, RGB(30, 30, 30));
+                    SetTextColor(hdcButton, RGB(200, 200, 200));
+                    return (LRESULT)CreateSolidBrush(RGB(30, 30, 30));
+                }
+            } else {
+                // Otros botones - tema normal
+                SetBkColor(hdcButton, RGB(0, 0, 0));
+                SetTextColor(hdcButton, RGB(255, 255, 255));
+                return (LRESULT)CreateSolidBrush(RGB(0, 0, 0));
+            }
+        }
+        
         case WM_CLOSE: {
             DestroyWindow(hwnd);
             return 0;
         }
+        
         case WM_DESTROY: {
+            // Limpiar fuentes
+            if (hTitleFont) DeleteObject(hTitleFont);
+            if (hLabelFont) DeleteObject(hLabelFont);
+            if (hControlFont) DeleteObject(hControlFont);
             return 0;
         }
     }
@@ -2412,18 +3507,31 @@ void ShowSettingsDialog(HWND parent) {
     wc.lpfnWndProc = SettingsDlgProc;
     wc.hInstance = GetModuleHandle(NULL);
     wc.lpszClassName = SETTINGS_CLASS_NAME;
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)); // Fondo negro OLED
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     RegisterClassW(&wc);
 
+    // Obtener dimensiones de la pantalla para centrar la ventana
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int windowWidth = 800;
+    int windowHeight = 600;
+    int x = (screenWidth - windowWidth) / 2;
+    int y = (screenHeight - windowHeight) / 2;
+
     HWND hwnd = CreateWindowExW(
-        0, SETTINGS_CLASS_NAME, L"Settings",
-        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 250, 120,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW, // Siempre al frente, sin barra de tareas
+        SETTINGS_CLASS_NAME, L"BetterAltTab Settings",
+        WS_POPUP | WS_BORDER, // Ventana popup con borde fino
+        x, y, windowWidth, windowHeight,
         parent, nullptr, wc.hInstance, nullptr);
 
     if (hwnd) {
+        // Aplicar tema dark OLED
+        SetWindowTheme(hwnd, L"", L"");
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
+        SetForegroundWindow(hwnd);
     }
 }
 
@@ -2437,3 +3545,647 @@ void MonitorMemoryUsage(); // Monitorea el uso de memoria
 bool ShouldRedraw(); // Determina si se debe redibujar basado en throttling
 void OptimizeProcessPriority(); // Optimiza la prioridad del proceso
 void ResetPerformanceCounters(); // Resetea contadores de rendimiento
+
+
+
+// ============================================================
+//  Implementación de funciones de filtrado
+// ============================================================
+
+void LoadFilterSettings() {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+    
+    // Cargar configuración de filtros
+    g_filteringEnabled = GetPrivateProfileIntW(L"Filters", L"Enabled", 0, exePath) != 0;
+    g_filterByTitle = GetPrivateProfileIntW(L"Filters", L"FilterByTitle", 1, exePath) != 0;
+    
+    // Cargar configuración de Alt+A
+    g_altAEnabled = GetPrivateProfileIntW(L"General", L"AltAEnabled", 1, exePath) != 0;
+    
+    // Cargar configuración de modo dinámico
+    g_dynamicOrder = GetPrivateProfileIntW(L"General", L"DynamicOrder", 1, exePath) != 0;
+    g_filterByClassName = GetPrivateProfileIntW(L"Filters", L"FilterByClassName", 1, exePath) != 0;
+    g_filterByProcessName = GetPrivateProfileIntW(L"Filters", L"FilterByProcessName", 1, exePath) != 0;
+    g_filterCaseSensitive = GetPrivateProfileIntW(L"Filters", L"CaseSensitive", 0, exePath) != 0;
+    g_filterRegex = GetPrivateProfileIntW(L"Filters", L"UseRegex", 0, exePath) != 0;
+    g_filterExcludeHidden = GetPrivateProfileIntW(L"Filters", L"ExcludeHidden", 1, exePath) != 0;
+    g_filterExcludeMinimized = GetPrivateProfileIntW(L"Filters", L"ExcludeMinimized", 0, exePath) != 0;
+    
+    // Cargar listas de exclusión/inclusión
+    wchar_t buffer[1024];
+    if (GetPrivateProfileStringW(L"Filters", L"ExcludedProcesses", L"", buffer, 1024, exePath)) {
+        g_excludedProcesses.clear();
+        std::wstring processes = buffer;
+        size_t pos = 0;
+        while ((pos = processes.find(L'|')) != std::wstring::npos) {
+            g_excludedProcesses.push_back(processes.substr(0, pos));
+            processes.erase(0, pos + 1);
+        }
+        if (!processes.empty()) g_excludedProcesses.push_back(processes);
+    }
+    
+    if (GetPrivateProfileStringW(L"Filters", L"ExcludedClasses", L"", buffer, 1024, exePath)) {
+        g_excludedClasses.clear();
+        std::wstring classes = buffer;
+        size_t pos = 0;
+        while ((pos = classes.find(L'|')) != std::wstring::npos) {
+            g_excludedClasses.push_back(classes.substr(0, pos));
+            classes.erase(0, pos + 1);
+        }
+        if (!classes.empty()) g_excludedClasses.push_back(classes);
+    }
+    
+    if (GetPrivateProfileStringW(L"Filters", L"IncludedProcesses", L"", buffer, 1024, exePath)) {
+        g_includedProcesses.clear();
+        std::wstring processes = buffer;
+        size_t pos = 0;
+        while ((pos = processes.find(L'|')) != std::wstring::npos) {
+            g_includedProcesses.push_back(processes.substr(0, pos));
+            processes.erase(0, pos + 1);
+        }
+        if (!processes.empty()) g_includedProcesses.push_back(processes);
+    }
+    
+    if (GetPrivateProfileStringW(L"Filters", L"IncludedClasses", L"", buffer, 1024, exePath)) {
+        g_includedClasses.clear();
+        std::wstring classes = buffer;
+        size_t pos = 0;
+        while ((pos = classes.find(L'|')) != std::wstring::npos) {
+            g_includedClasses.push_back(classes.substr(0, pos));
+            classes.erase(0, pos + 1);
+        }
+        if (!classes.empty()) g_includedClasses.push_back(classes);
+    }
+}
+
+void SaveFilterSettings() {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+    
+    // Guardar configuración de filtros
+    WritePrivateProfileStringW(L"Filters", L"Enabled", g_filteringEnabled ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByTitle", g_filterByTitle ? L"1" : L"0", exePath);
+    
+    // Guardar configuración de Alt+A
+    WritePrivateProfileStringW(L"General", L"AltAEnabled", g_altAEnabled ? L"1" : L"0", exePath);
+    
+    // Guardar configuración de modo dinámico
+    WritePrivateProfileStringW(L"General", L"DynamicOrder", g_dynamicOrder ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByClassName", g_filterByClassName ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByProcessName", g_filterByProcessName ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"CaseSensitive", g_filterCaseSensitive ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"UseRegex", g_filterRegex ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludeHidden", g_filterExcludeHidden ? L"1" : L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludeMinimized", g_filterExcludeMinimized ? L"1" : L"0", exePath);
+    
+    // Guardar listas de exclusión/inclusión
+    std::wstring excludedProcesses;
+    for (const auto& proc : g_excludedProcesses) {
+        if (!excludedProcesses.empty()) excludedProcesses += L"|";
+        excludedProcesses += proc;
+    }
+    WritePrivateProfileStringW(L"Filters", L"ExcludedProcesses", excludedProcesses.c_str(), exePath);
+    
+    std::wstring excludedClasses;
+    for (const auto& cls : g_excludedClasses) {
+        if (!excludedClasses.empty()) excludedClasses += L"|";
+        excludedClasses += cls;
+    }
+    WritePrivateProfileStringW(L"Filters", L"ExcludedClasses", excludedClasses.c_str(), exePath);
+    
+    std::wstring includedProcesses;
+    for (const auto& proc : g_includedProcesses) {
+        if (!includedProcesses.empty()) includedProcesses += L"|";
+        includedProcesses += proc;
+    }
+    WritePrivateProfileStringW(L"Filters", L"IncludedProcesses", includedProcesses.c_str(), exePath);
+    
+    std::wstring includedClasses;
+    for (const auto& cls : g_includedClasses) {
+        if (!includedClasses.empty()) includedClasses += L"|";
+        includedClasses += cls;
+    }
+    WritePrivateProfileStringW(L"Filters", L"IncludedClasses", includedClasses.c_str(), exePath);
+}
+
+std::wstring GetProcessName(HWND hwnd) {
+    DWORD pid = 0;
+    if (!GetWindowThreadProcessId(hwnd, &pid)) return L"";
+    
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!hProcess) return L"";
+    
+    wchar_t exePath[MAX_PATH] = {0};
+    std::wstring processName = L"";
+    
+    if (GetModuleFileNameExW(hProcess, nullptr, exePath, MAX_PATH)) {
+        wchar_t* fileName = wcsrchr(exePath, L'\\');
+        if (fileName) {
+            processName = fileName + 1;
+        }
+    }
+    
+    CloseHandle(hProcess);
+    return processName;
+}
+
+bool WindowMatchesFilter(const WindowInfo& window) {
+    if (!g_filteringEnabled) return true;
+    
+
+    
+    // Verificar exclusiones por proceso
+    if (!g_excludedProcesses.empty()) {
+        std::wstring processName = GetProcessName(window.hwnd);
+        for (const auto& excluded : g_excludedProcesses) {
+            if (processName.find(excluded) != std::wstring::npos) return false;
+        }
+    }
+    
+    // Verificar exclusiones por clase
+    if (!g_excludedClasses.empty()) {
+        for (const auto& excluded : g_excludedClasses) {
+            if (window.className.find(excluded) != std::wstring::npos) return false;
+        }
+    }
+    
+    // Verificar inclusiones (whitelist) - si hay inclusiones, solo mostrar esas
+    if (!g_includedProcesses.empty()) {
+        std::wstring processName = GetProcessName(window.hwnd);
+        bool found = false;
+        for (const auto& included : g_includedProcesses) {
+            if (processName.find(included) != std::wstring::npos) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    
+    if (!g_includedClasses.empty()) {
+        bool found = false;
+        for (const auto& included : g_includedClasses) {
+            if (window.className.find(included) != std::wstring::npos) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    
+    // Verificar filtro de texto
+    if (!g_filterText.empty()) {
+        bool matches = false;
+        std::wstring searchText = g_filterText;
+        std::wstring title = window.title;
+        std::wstring className = window.className;
+        std::wstring processName = GetProcessName(window.hwnd);
+        
+        if (!g_filterCaseSensitive) {
+            std::transform(searchText.begin(), searchText.end(), searchText.begin(), ::tolower);
+            std::transform(title.begin(), title.end(), title.begin(), ::tolower);
+            std::transform(className.begin(), className.end(), className.begin(), ::tolower);
+            std::transform(processName.begin(), processName.end(), processName.begin(), ::tolower);
+        }
+        
+        if (g_filterByTitle && title.find(searchText) != std::wstring::npos) matches = true;
+        if (g_filterByClassName && className.find(searchText) != std::wstring::npos) matches = true;
+        if (g_filterByProcessName && processName.find(searchText) != std::wstring::npos) matches = true;
+        
+        // Si hay texto de filtro, la ventana debe coincidir
+        if (!matches) return false;
+    }
+    // Si no hay texto de filtro, todas las ventanas pasan (sin filtrar)
+    
+    // Verificar exclusiones por estado de ventana
+    if (g_filterExcludeHidden && !IsWindowVisible(window.hwnd)) return false;
+    if (g_filterExcludeMinimized && IsIconic(window.hwnd)) return false;
+    
+    return true;
+}
+
+void ApplyFilters() {
+
+    
+    if (!g_filteringEnabled) {
+        g_filteredWindows = g_windows; // Usar g_windows en lugar de g_allWindows
+
+        return;
+    }
+    
+    g_filteredWindows.clear();
+    for (const auto& window : g_windows) { // Usar g_windows en lugar de g_allWindows
+        if (WindowMatchesFilter(window)) {
+            g_filteredWindows.push_back(window);
+        }
+    }
+    
+    // Reset selection to first window when filtering changes
+    if (!g_filteredWindows.empty()) {
+        g_selectedIndex = 0;
+        g_hoverIndex = 0;
+    } else {
+        g_selectedIndex = -1;
+        g_hoverIndex = -1;
+    }
+    
+
+}
+
+void ToggleFiltering() {
+    g_filteringEnabled = !g_filteringEnabled;
+    ApplyFilters();
+    SaveFilterSettings();
+}
+
+void ClearFilters() {
+    g_filterText.clear();
+    g_excludedProcesses.clear();
+    g_excludedClasses.clear();
+    g_includedProcesses.clear();
+    g_includedClasses.clear();
+    ApplyFilters();
+    SaveFilterSettings();
+}
+
+void SetFilterText(const std::wstring& text) {
+    g_filterText = text;
+    ApplyFilters();
+}
+
+void AddExcludedProcess(const std::wstring& processName) {
+    if (std::find(g_excludedProcesses.begin(), g_excludedProcesses.end(), processName) == g_excludedProcesses.end()) {
+        g_excludedProcesses.push_back(processName);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void RemoveExcludedProcess(const std::wstring& processName) {
+    auto it = std::find(g_excludedProcesses.begin(), g_excludedProcesses.end(), processName);
+    if (it != g_excludedProcesses.end()) {
+        g_excludedProcesses.erase(it);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void AddExcludedClass(const std::wstring& className) {
+    if (std::find(g_excludedClasses.begin(), g_excludedClasses.end(), className) == g_excludedClasses.end()) {
+        g_excludedClasses.push_back(className);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void RemoveExcludedClass(const std::wstring& className) {
+    auto it = std::find(g_excludedClasses.begin(), g_excludedClasses.end(), className);
+    if (it != g_excludedClasses.end()) {
+        g_excludedClasses.erase(it);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void AddIncludedProcess(const std::wstring& processName) {
+    if (std::find(g_includedProcesses.begin(), g_includedProcesses.end(), processName) == g_includedProcesses.end()) {
+        g_includedProcesses.push_back(processName);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void RemoveIncludedProcess(const std::wstring& processName) {
+    auto it = std::find(g_includedProcesses.begin(), g_includedProcesses.end(), processName);
+    if (it != g_includedProcesses.end()) {
+        g_includedProcesses.erase(it);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void AddIncludedClass(const std::wstring& className) {
+    if (std::find(g_includedClasses.begin(), g_includedClasses.end(), className) == g_includedClasses.end()) {
+        g_includedClasses.push_back(className);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+void RemoveIncludedClass(const std::wstring& className) {
+    auto it = std::find(g_includedClasses.begin(), g_includedClasses.end(), className);
+    if (it != g_includedClasses.end()) {
+        g_includedClasses.erase(it);
+        ApplyFilters();
+        SaveFilterSettings();
+    }
+}
+
+// Forward declaration for the filter dialog window procedure
+LRESULT CALLBACK FilterDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void ShowFilterDialog(HWND parent) {
+    // Crear un diálogo simple para configurar filtros
+    const wchar_t FILTER_DIALOG_CLASS[] = L"BetterAltTabFilterDialogClass";
+    WNDCLASSW wc = {0};
+    wc.lpfnWndProc = FilterDialogProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = FILTER_DIALOG_CLASS;
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    RegisterClassW(&wc);
+    
+    HWND hDialog = CreateWindowExW(
+        0, FILTER_DIALOG_CLASS, L"Filter Settings",
+        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX,
+        CW_USEDEFAULT, CW_USEDEFAULT, 400, 180,
+        parent, nullptr, wc.hInstance, nullptr);
+    
+    if (hDialog) {
+        ShowWindow(hDialog, SW_SHOW);
+        UpdateWindow(hDialog);
+    }
+}
+
+// Window procedure for the filter dialog
+LRESULT CALLBACK FilterDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static HWND hFilterText, hFilterByTitle, hFilterByClass, hFilterByProcess;
+    static HWND hCaseSensitive, hExcludeHidden, hExcludeMinimized;
+    static HWND hEnabled, hClear, hApply;
+    
+    switch (msg) {
+        case WM_CREATE: {
+            // Crear controles del diálogo
+            CreateWindowW(L"STATIC", L"Filter Text:", WS_CHILD | WS_VISIBLE, 10, 10, 80, 20, hwnd, nullptr, nullptr, nullptr);
+            hFilterText = CreateWindowW(L"EDIT", g_filterText.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER, 100, 10, 200, 20, hwnd, nullptr, nullptr, nullptr);
+            
+            hFilterByTitle = CreateWindowW(L"BUTTON", L"Filter by Title", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 10, 40, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            hFilterByClass = CreateWindowW(L"BUTTON", L"Filter by Class", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 140, 40, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            hFilterByProcess = CreateWindowW(L"BUTTON", L"Filter by Process", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 270, 40, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            
+            hCaseSensitive = CreateWindowW(L"BUTTON", L"Case Sensitive", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 10, 70, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            hExcludeHidden = CreateWindowW(L"BUTTON", L"Exclude Hidden", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 140, 70, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            hExcludeMinimized = CreateWindowW(L"BUTTON", L"Exclude Minimized", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 270, 70, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            
+            hEnabled = CreateWindowW(L"BUTTON", L"Enable Filtering", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 10, 100, 120, 20, hwnd, nullptr, nullptr, nullptr);
+            hClear = CreateWindowW(L"BUTTON", L"Clear Filters", WS_CHILD | WS_VISIBLE, 140, 100, 80, 25, hwnd, nullptr, nullptr, nullptr);
+            hApply = CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 270, 100, 80, 25, hwnd, nullptr, nullptr, nullptr);
+            
+            // Establecer estados iniciales
+            Button_SetCheck(hFilterByTitle, g_filterByTitle ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hFilterByClass, g_filterByClassName ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hFilterByProcess, g_filterByProcessName ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hCaseSensitive, g_filterCaseSensitive ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hExcludeHidden, g_filterExcludeHidden ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hExcludeMinimized, g_filterExcludeMinimized ? BST_CHECKED : BST_UNCHECKED);
+            Button_SetCheck(hEnabled, g_filteringEnabled ? BST_CHECKED : BST_UNCHECKED);
+            
+            return 0;
+        }
+        case WM_COMMAND: {
+            if (LOWORD(wParam) == (WORD)hClear) {
+                ClearFilters();
+                SetWindowTextW(hFilterText, L"");
+                Button_SetCheck(hEnabled, BST_UNCHECKED);
+                return 0;
+            } else if (LOWORD(wParam) == (WORD)hApply) {
+                // Obtener valores de los controles
+                wchar_t filterText[256];
+                GetWindowTextW(hFilterText, filterText, 256);
+                g_filterText = filterText;
+                
+                g_filterByTitle = (Button_GetCheck(hFilterByTitle) == BST_CHECKED);
+                g_filterByClassName = (Button_GetCheck(hFilterByClass) == BST_CHECKED);
+                g_filterByProcessName = (Button_GetCheck(hFilterByProcess) == BST_CHECKED);
+                g_filterCaseSensitive = (Button_GetCheck(hCaseSensitive) == BST_CHECKED);
+                g_filterExcludeHidden = (Button_GetCheck(hExcludeHidden) == BST_CHECKED);
+                g_filterExcludeMinimized = (Button_GetCheck(hExcludeMinimized) == BST_CHECKED);
+                g_filteringEnabled = (Button_GetCheck(hEnabled) == BST_CHECKED);
+                
+                // Aplicar filtros y guardar configuración
+                ApplyFilters();
+                SaveFilterSettings();
+                
+                // Redibujar la grilla si está visible
+                HWND parent = GetParent(hwnd);
+                if (parent && IsWindowVisible(parent)) {
+                    InvalidateGrid(parent);
+                }
+                
+                DestroyWindow(hwnd);
+                return 0;
+            }
+            break;
+        }
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void ClearSearchBox() {
+    if (g_quickFilterEdit) {
+        SetWindowTextW(g_quickFilterEdit, L"");
+        g_filterText.clear();
+    }
+}
+
+// Función para mostrar/ocultar controles según la pestaña seleccionada
+void ShowTabControls(HWND hwnd, int tabIndex) {
+    // Ocultar todos los controles primero
+    for (int i = IDC_COLUMNS_LABEL; i <= IDC_LOG_LEVEL_COMBO; i++) {
+        HWND hControl = GetDlgItem(hwnd, i);
+        if (hControl) {
+            ShowWindow(hControl, SW_HIDE);
+        }
+    }
+    
+    // Mostrar controles según la pestaña
+    switch (tabIndex) {
+        case 0: // General
+            ShowWindow(GetDlgItem(hwnd, IDC_COLUMNS_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_COLUMNS_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_OVERLAY_ALPHA_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_OVERLAY_ALPHA_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_DYNAMIC_ORDER_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_SAVE_WINDOW_ORDER_CHECK), SW_SHOW);
+            break;
+            
+        case 1: // Performance
+            ShowWindow(GetDlgItem(hwnd, IDC_LOW_RESOURCE_MODE_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_LOW_RESOURCE_MODE_COMBO), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_MAX_THUMBNAIL_CACHE_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_MAX_THUMBNAIL_CACHE_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_NORMAL_REFRESH_RATE_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_NORMAL_REFRESH_RATE_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_AUTO_CLEANUP_INTERVAL_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_AUTO_CLEANUP_INTERVAL_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_MAX_THUMBNAIL_MEMORY_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_MAX_THUMBNAIL_MEMORY_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_WINDOW_CACHE_TIMEOUT_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_WINDOW_CACHE_TIMEOUT_EDIT), SW_SHOW);
+            break;
+            
+        case 2: // UI
+            ShowWindow(GetDlgItem(hwnd, IDC_SHOW_TRAY_ICON_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_SHOW_SYSTEM_INFO_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_SHOW_WINDOW_COUNT_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_SHOW_MEMORY_USAGE_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_SHOW_PERFORMANCE_MODE_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_TRAY_ICON_SIZE_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_TRAY_ICON_SIZE_COMBO), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_TRAY_ICON_COLOR_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_TRAY_ICON_COLOR_EDIT), SW_SHOW);
+            break;
+            
+        case 3: // Hotkeys
+            ShowWindow(GetDlgItem(hwnd, IDC_ALTQ_KEY_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_ALTQ_KEY_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_ALTA_KEY_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_ALTA_KEY_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_NUMPAD_MODIFIER_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_NUMPAD_MODIFIER_COMBO), SW_SHOW);
+            break;
+            
+        case 4: // Advanced
+            ShowWindow(GetDlgItem(hwnd, IDC_DEBUG_MODE_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_EVENT_LOGGING_CHECK), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_LOG_LEVEL_LABEL), SW_SHOW);
+            ShowWindow(GetDlgItem(hwnd, IDC_LOG_LEVEL_COMBO), SW_SHOW);
+            break;
+    }
+    
+    // Los botones siempre están visibles
+    ShowWindow(GetDlgItem(hwnd, IDC_APPLY_BUTTON), SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_CANCEL_BUTTON), SW_SHOW);
+}
+
+// Función para guardar todas las configuraciones
+void SaveAllSettings(HWND hwnd) {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+    
+    // Obtener valores de los controles
+    wchar_t buffer[256];
+    
+    // General
+    GetDlgItemTextW(hwnd, IDC_COLUMNS_EDIT, buffer, 256);
+    int newCols = _wtoi(buffer);
+    if (newCols > 0 && newCols < 20) {
+        g_fixedCols = newCols;
+        WritePrivateProfileStringW(L"General", L"Columns", buffer, exePath);
+    }
+    
+    GetDlgItemTextW(hwnd, IDC_OVERLAY_ALPHA_EDIT, buffer, 256);
+    int newAlpha = _wtoi(buffer);
+    if (newAlpha >= 0 && newAlpha <= 255) {
+        WritePrivateProfileStringW(L"General", L"OverlayAlpha", buffer, exePath);
+    }
+    
+    // Performance
+    HWND hLowResourceCombo = GetDlgItem(hwnd, IDC_LOW_RESOURCE_MODE_COMBO);
+    int lowResourceIndex = SendMessage(hLowResourceCombo, CB_GETCURSEL, 0, 0);
+    const wchar_t* lowResourceModes[] = {L"auto", L"on", L"off"};
+    WritePrivateProfileStringW(L"Performance", L"LowResourceMode", lowResourceModes[lowResourceIndex], exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_MAX_THUMBNAIL_CACHE_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailCache", buffer, exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_NORMAL_REFRESH_RATE_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Performance", L"NormalRefreshRate", buffer, exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_AUTO_CLEANUP_INTERVAL_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Performance", L"AutoCleanupInterval", buffer, exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_MAX_THUMBNAIL_MEMORY_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailMemory", buffer, exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_WINDOW_CACHE_TIMEOUT_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Performance", L"WindowCacheTimeout", buffer, exePath);
+    
+    // UI
+    BOOL showTrayIcon = (IsDlgButtonChecked(hwnd, IDC_SHOW_TRAY_ICON_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"UI", L"ShowTrayIcon", showTrayIcon ? L"1" : L"0", exePath);
+    
+    BOOL showSystemInfo = (IsDlgButtonChecked(hwnd, IDC_SHOW_SYSTEM_INFO_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"UI", L"ShowSystemInfo", showSystemInfo ? L"1" : L"0", exePath);
+    
+    BOOL showWindowCount = (IsDlgButtonChecked(hwnd, IDC_SHOW_WINDOW_COUNT_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"UI", L"ShowWindowCount", showWindowCount ? L"1" : L"0", exePath);
+    
+    BOOL showMemoryUsage = (IsDlgButtonChecked(hwnd, IDC_SHOW_MEMORY_USAGE_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"UI", L"ShowMemoryUsage", showMemoryUsage ? L"1" : L"0", exePath);
+    
+    BOOL showPerformanceMode = (IsDlgButtonChecked(hwnd, IDC_SHOW_PERFORMANCE_MODE_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"UI", L"ShowPerformanceMode", showPerformanceMode ? L"1" : L"0", exePath);
+    
+    HWND hTraySizeCombo = GetDlgItem(hwnd, IDC_TRAY_ICON_SIZE_COMBO);
+    int traySizeIndex = SendMessage(hTraySizeCombo, CB_GETCURSEL, 0, 0);
+    const wchar_t* traySizes[] = {L"16", L"32", L"48"};
+    WritePrivateProfileStringW(L"UI", L"TrayIconSize", traySizes[traySizeIndex], exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_TRAY_ICON_COLOR_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"UI", L"TrayIconColor", buffer, exePath);
+    
+    // Hotkeys
+    GetDlgItemTextW(hwnd, IDC_ALTQ_KEY_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Hotkeys", L"AltQKey", buffer, exePath);
+    
+    GetDlgItemTextW(hwnd, IDC_ALTA_KEY_EDIT, buffer, 256);
+    WritePrivateProfileStringW(L"Hotkeys", L"AltAKey", buffer, exePath);
+    
+    HWND hNumpadCombo = GetDlgItem(hwnd, IDC_NUMPAD_MODIFIER_COMBO);
+    int numpadIndex = SendMessage(hNumpadCombo, CB_GETCURSEL, 0, 0);
+    const wchar_t* numpadModifiers[] = {L"VK_CONTROL", L"VK_LCONTROL", L"VK_RCONTROL"};
+    WritePrivateProfileStringW(L"Hotkeys", L"NumpadModifier", numpadModifiers[numpadIndex], exePath);
+    
+    // Advanced
+    BOOL debugMode = (IsDlgButtonChecked(hwnd, IDC_DEBUG_MODE_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"Advanced", L"DebugMode", debugMode ? L"1" : L"0", exePath);
+    
+    BOOL eventLogging = (IsDlgButtonChecked(hwnd, IDC_EVENT_LOGGING_CHECK) == BST_CHECKED);
+    WritePrivateProfileStringW(L"Advanced", L"EventLogging", eventLogging ? L"1" : L"0", exePath);
+    
+    HWND hLogLevelCombo = GetDlgItem(hwnd, IDC_LOG_LEVEL_COMBO);
+    int logLevelIndex = SendMessage(hLogLevelCombo, CB_GETCURSEL, 0, 0);
+    const wchar_t* logLevels[] = {L"1", L"2", L"3", L"4", L"5"};
+    WritePrivateProfileStringW(L"Advanced", L"LogLevel", logLevels[logLevelIndex], exePath);
+    
+    // Recargar configuraciones
+    LoadPerformanceSettings();
+}
+
+// Función para aplicar el tema dark OLED a todos los controles
+void ApplyDarkThemeToControls(HWND hwnd, HFONT hTitleFont, HFONT hLabelFont, HFONT hControlFont) {
+    // Aplicar fuente del título al título principal
+    HWND hTitle = GetDlgItem(hwnd, 0); // El primer control creado (título)
+    if (hTitle) {
+        SendMessage(hTitle, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
+    }
+    
+    // Aplicar fuentes a todos los controles según su tipo
+    for (int i = IDC_COLUMNS_LABEL; i <= IDC_LOG_LEVEL_COMBO; i++) {
+        HWND hControl = GetDlgItem(hwnd, i);
+        if (hControl) {
+            // Aplicar fuente según el tipo de control
+            if (i >= IDC_COLUMNS_LABEL && i <= IDC_TRAY_ICON_COLOR_LABEL) {
+                // Labels - usar fuente de etiqueta
+                SendMessage(hControl, WM_SETFONT, (WPARAM)hLabelFont, TRUE);
+            } else {
+                // Controles de entrada - usar fuente de control
+                SendMessage(hControl, WM_SETFONT, (WPARAM)hControlFont, TRUE);
+            }
+        }
+    }
+    
+    // Aplicar fuentes a los botones
+    SendMessage(GetDlgItem(hwnd, IDC_APPLY_BUTTON), WM_SETFONT, (WPARAM)hControlFont, TRUE);
+    SendMessage(GetDlgItem(hwnd, IDC_CANCEL_BUTTON), WM_SETFONT, (WPARAM)hControlFont, TRUE);
+}

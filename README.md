@@ -1,109 +1,97 @@
-# BetterAltTab_Unnamed10110 v5
+# BetterAltTab_Unnamed10110 v6
 
-A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 3** introduces advanced number input overlay, comprehensive Spanish documentation, INI-based configuration system, settings dialog, dynamic thumbnail sizing, and enhanced user experience features.
+A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 6** introduces advanced filtering system, dual hotkey modes, intelligent performance optimization, comprehensive settings management, and enhanced user experience features.
 
 ---
 
-## 🚀 What's New in v3
+## 🚀 What's New in v6
 
-### 🎯 Advanced Number Input System
-- **Ctrl+Number Overlay**: When the main overlay is open, press and hold Ctrl to activate a minimalistic number input overlay
-- **Precise Window Selection**: Type any number (1 to N, where N is the number of windows) and press Enter to instantly focus that window
-- **OLED Black Design**: The number input overlay features a sleek black background with white text and rounded corners
-- **Escape to Cancel**: Press Escape to close the number input overlay without selecting a window
-- **Standalone Window**: The input overlay operates as an independent window for better focus management
+### 🎯 Advanced Filtering System
+- **Alt+A Hotkey**: Dedicated hotkey for persistent filtering mode with search box
+- **Real-time Filtering**: Dynamic thumbnail updates as you type in the search box
+- **Multi-criteria Filtering**: Filter by window title, class name, and process name
+- **Smart Search Box**: Centered, OLED-themed search input with automatic clearing
+- **Persistent Mode**: Overlay stays open while filtering for extended search sessions
+- **Arrow Key Navigation**: Navigate through filtered results with arrow keys
+- **Dynamic Thumbnail Display**: Thumbnails appear/disappear based on filter criteria
 
-### ⚙️ INI Configuration System
-- **Dynamic Configuration**: All application settings can be modified via `BetterAltTab.ini` without recompilation
-- **Configurable Parameters**: 
-  - Number of columns in the grid (1-19)
-  - Overlay opacity (0-255)
-  - Hotkey definitions
-  - Color customization (borders, highlights, etc.)
-  - Overlay size percentages
-- **Runtime Updates**: Settings are loaded on startup and can be modified through the settings dialog
-- **Backward Compatibility**: Default values are used if configuration file is missing
+### ⚡ Dual Hotkey System
+- **Alt+Q**: Classic window switching mode (original functionality)
+- **Alt+A**: Advanced filtering mode with persistent overlay
+- **Independent Operation**: Each mode operates independently without interference
+- **Toggle Control**: Enable/disable Alt+A functionality from tray menu
+- **Persistent State**: Alt+A state saved and restored between sessions
 
-### 🎛️ Settings Dialog
-- **Tray Menu Integration**: Right-click the tray icon and select "Settings..." to open the configuration dialog
-- **Real-time Updates**: Changes are applied immediately and saved to the INI file
-- **User-friendly Interface**: Simple dialog with input validation and error handling
-- **Persistent Storage**: All settings are automatically saved to `BetterAltTab.ini`
+### 🚀 Intelligent Performance Optimization
+- **Full Performance Mode**: Optimized for 16GB+ RAM systems with maximum responsiveness
+- **Full Low Resources Mode**: Adaptive configuration based on current system resources
+- **Automatic Resource Analysis**: Detects RAM, CPU, and disk usage for optimal settings
+- **One-Click Optimization**: Apply performance profiles from tray menu
+- **Real-time Adaptation**: Settings adjust based on system performance metrics
+- **Battery Life Optimization**: Low resource mode extends laptop battery life
 
-### 📐 Dynamic Thumbnail Sizing
-- **Automatic Scaling**: Thumbnail sizes automatically adjust based on the configured number of columns
-- **Aspect Ratio Preservation**: Thumbnails maintain their original aspect ratio while scaling
-- **No Horizontal Scrolling**: All thumbnails fit within the overlay width without requiring horizontal scrolling
-- **Responsive Layout**: Grid layout adapts to different screen sizes and column configurations
+### 🎛️ Enhanced Settings Management
+- **Dark OLED Settings Overlay**: Modern, themed settings dialog with custom tabs
+- **Comprehensive Configuration**: All settings accessible through organized interface
+- **Real-time Preview**: See changes immediately without restarting
+- **INI File Integration**: All settings automatically saved to configuration file
+- **Performance Profiles**: Quick access to optimization presets
+- **Custom Tab System**: Organized settings into logical categories
 
-### 🖱️ Enhanced Mouse Support
-- **Wheel Scrolling**: 
-  - Normal mouse wheel: Vertical scrolling through windows
-  - Shift + mouse wheel: Horizontal scrolling through windows
-- **Hover Effects**: Visual feedback when hovering over window thumbnails and buttons
-- **Click Actions**: Direct interaction with pin, close, and pin-to-position buttons
-- **Drag and Drop**: Visual feedback during drag operations (prepared for future implementation)
+### 🔧 Advanced Window Management
+- **Automatic Window Detection**: Enhanced window enumeration for better application coverage
+- **Real-time Thumbnail Updates**: Thumbnails update dynamically as windows change
+- **Automatic Cleanup**: Closed windows automatically removed from overlay
+- **Window Hook System**: System-wide monitoring for window state changes
+- **Memory Management**: Intelligent thumbnail cache management
+- **Performance Monitoring**: Real-time resource usage tracking
 
-### 🌍 Comprehensive Spanish Documentation
-- **Paraguayan Spanish Comments**: All configuration variables, defines, pragmas, includes, and functions are documented in Spanish
-- **Detailed Function Documentation**: Every function, method, and class includes explanatory comments about its purpose and usage
-- **Organized Code Structure**: Clear sections for overlay configuration, state variables, and utility functions
-- **Enhanced Maintainability**: Code is now more accessible to Spanish-speaking developers
-
-### ⚡ Enhanced User Experience
-- **Dual Input Methods**: 
-  - Traditional numpad keys (1-9, 0 for 10th) for quick selection
-  - New Ctrl+number overlay for precise input of any window number
-- **Improved Visual Feedback**: Better hover states and visual indicators
-- **Optimized Performance**: Enhanced timer-based input detection for reliable numpad key handling
-- **Better Error Handling**: Robust input validation and graceful fallbacks
-
-### 🔧 Technical Improvements
-- **Subclassed Edit Controls**: Direct message handling for Enter/Escape keys in the number input overlay
-- **Enhanced Timer System**: Improved WM_TIMER handling for both numpad detection and Ctrl overlay management
-- **Better Resource Management**: Proper cleanup of overlay windows and edit controls
-- **Debug Logging**: Enhanced debugging capabilities with detailed logging of user interactions
+### 🎨 Enhanced User Interface
+- **OLED Black Theme**: True black backgrounds for OLED displays
+- **Custom Tab Buttons**: Modern tab interface without default Windows controls
+- **Responsive Layout**: Adaptive grid system with dynamic column sizing
+- **Visual Feedback**: Enhanced hover states and selection indicators
+- **Professional Appearance**: Clean, modern design with consistent theming
 
 ---
 
 ## 🎮 How to Use
 
-### Main Overlay (Alt+Q)
-- **Open Overlay**: Press `Alt+Q` to open the main window switcher
+### Classic Mode (Alt+Q)
+- **Open Overlay**: Press `Alt+Q` to open the classic window switcher
 - **Navigate**: While holding Alt, use arrow keys to move selection
 - **Quick Selection**: Press numpad keys `1`-`9` or `0` (for 10th window) for instant selection
 - **Close**: Release Alt to focus selected window, or press `Esc`
 
-### Advanced Number Input (Ctrl)
-- **Activate**: With main overlay open, press and hold `Ctrl`
-- **Input Number**: Type any number from 1 to N (where N is total windows)
-- **Confirm**: Press `Enter` to focus the selected window
-- **Cancel**: Press `Escape` to close without selecting
-- **Visual**: Minimalistic black overlay with white text and rounded corners
+### Advanced Filtering Mode (Alt+A)
+- **Activate Filtering**: Press `Alt+A` to open overlay with filtering enabled
+- **Search**: Type in the search box to filter windows in real-time
+- **Navigate Results**: Use arrow keys to move through filtered results
+- **Select Window**: Press Enter or Alt to focus the selected window
+- **Persistent Mode**: Overlay remains open until you select a window or press Escape
 
-### Mouse Navigation
-- **Vertical Scroll**: Use mouse wheel to scroll through windows vertically
-- **Horizontal Scroll**: Hold Shift and use mouse wheel to scroll horizontally
+### Performance Optimization
+- **Full Performance**: Right-click tray icon → "Full Performance" for maximum speed
+- **Low Resources**: Right-click tray icon → "Full Low Resources" for battery life
+- **Automatic Analysis**: System resources analyzed and optimized automatically
+- **Profile Switching**: Change performance profiles anytime from tray menu
+
+### Advanced Navigation
+- **Arrow Keys**: Navigate through windows with full wrap-around support
+- **Mouse Wheel**: Vertical scrolling through window list
 - **Hover Selection**: Move mouse over windows to highlight them
 - **Click to Select**: Click on any window thumbnail to select it
 
 ### Quick Actions
 - **Close Window**: Click the `X` icon on any window thumbnail
 - **Pin/Unpin**: Click the pin icon to pin/unpin a window
-- **Pin to Position**: Click the `#` icon to assign a specific position number (automatically pins the window)
+- **Pin to Position**: Click the `#` icon to assign a specific position number
 
-### Mode Switching
-- **Toggle Modes**: Press `F2` to switch between Dynamic Order and Persistent Z-Order modes
-- **Visual Indicator**: The button appearance changes to show current mode
-aaaaasas
 ### Configuration
 - **Open Settings**: Right-click the tray icon and select "Settings..."
-- **Modify Columns**: Change the number of columns displayed in the grid
-- **Apply Changes**: Click "Apply" to save changes immediately
-
-### Visual Demostration
-
-![Demo](https://github.com/Unnamed10110/BetterAltTab_Unnamed10110/blob/master/eg.gif)
+- **Performance Modes**: Access optimization profiles from tray menu
+- **Toggle Alt+A**: Enable/disable filtering mode from tray menu
+- **Dynamic Mode**: Switch between dynamic and fixed window ordering
 
 ---
 
@@ -117,15 +105,14 @@ aaaaasas
 - **Circular Navigation**: Arrow keys wrap around window list
 
 ### Advanced Features
-- **Dual Input Systems**: Both numpad and precise number input
+- **Dual Hotkey System**: Alt+Q for classic mode, Alt+A for filtering
+- **Real-time Filtering**: Dynamic search with instant results
+- **Performance Optimization**: Intelligent resource management
+- **Comprehensive Settings**: Dark OLED themed configuration interface
+- **Window Monitoring**: Automatic detection of window state changes
+- **Memory Management**: Intelligent thumbnail caching and cleanup
 - **INI Configuration**: External configuration file for all settings
-- **Settings Dialog**: User-friendly interface for configuration changes
 - **Dynamic Thumbnail Sizing**: Automatic scaling based on column count
-- **Enhanced Mouse Support**: Wheel scrolling and hover effects
-- **OLED-Optimized Theme**: True black backgrounds for OLED displays
-- **Rounded Corners**: Modern UI with custom window regions
-- **Transparency Effects**: Layered windows with alpha blending
-- **Tray Integration**: Persistent system tray icon with context menu
 
 ### Technical Excellence
 - **Pure Win32 API**: No external dependencies or frameworks
@@ -134,6 +121,8 @@ aaaaasas
 - **Error Resilient**: Graceful handling of window state changes
 - **Cross-Desktop**: Works seamlessly across virtual desktops
 - **Configuration Driven**: Runtime configuration without recompilation
+- **Performance Monitoring**: Real-time resource usage tracking
+- **Automatic Optimization**: Self-adjusting performance parameters
 
 ---
 
@@ -159,7 +148,7 @@ aaaaasas
 
 3. **Run Application**:
    ```sh
-   build/Release/BetterAltTab_Unnamed10110.exe
+   build/Release/BetterAltTab_Unnamed10110_Optimized.exe
    ```
 
 ### Auto-Start Setup
@@ -175,55 +164,98 @@ The application uses `BetterAltTab.ini` for all configuration settings:
 ```ini
 [General]
 ; Number of columns shown in the grid (1-19 recommended)
-Columns=9
-
+Columns=6
 ; Overlay opacity (0 = fully transparent, 255 = fully opaque)
-OverlayAlpha=230
+OverlayAlpha=255
+; Enable/disable Alt+A filtering functionality
+AltAEnabled=1
 
-; Hot-key definitions – virtual-key codes or characters
-; Leave blank to keep compiled defaults
-;CtrlHotkey=VK_DECIMAL   ; decimal on numpad
-;AltQHotkey=Q            ; letter Q combined with Alt
+[Performance]
+; Low resource mode (auto/on/off)
+LowResourceMode=auto
+; Maximum thumbnail cache size
+MaxThumbnailCache=20
+; Normal refresh rate in milliseconds
+NormalRefreshRate=25
+; Low resource refresh rate in milliseconds
+LowResourceRefreshRate=100
+; Minimum thumbnail size in pixels
+MinThumbnailSize=200
+; Memory threshold for low resource mode (MB)
+MemoryThreshold=512
+; CPU threshold for low resource mode (percentage)
+CPUThreshold=80
+; Reserve memory for critical operations
+ReserveMemory=true
+; Optimize process priority
+OptimizePriority=true
+; Reduce visual effects in low resource mode
+ReduceVisualEffects=true
+; Automatic cleanup interval (milliseconds)
+AutoCleanupInterval=30000
+; Maximum thumbnail memory usage (MB)
+MaxThumbnailMemory=100
 
-; Colour customisation (RGB hex, e.g. 00FF44 is bright green)
-;BorderColor=202030
-;HoverBorderColor=50B4FF
-;HighlightColor=00FF44
+[UI]
+; Show system tray icon
+ShowTrayIcon=1
+; Show system information
+ShowSystemInfo=1
+; Show window count
+ShowWindowCount=1
+; Show memory usage
+ShowMemoryUsage=1
+; Show performance mode indicator
+ShowPerformanceMode=1
 
-; Per-monitor overlay size – expressed as percentage of work-area
-;OverlayWidthPct=88
-;OverlayHeightPct=80
+[Hotkeys]
+; Alt+Q key (classic mode)
+AltQKey=Q
+; Alt+A key (filtering mode)
+AltAKey=A
+; Numpad modifier key
+NumpadModifier=0
+
+[Behavior]
+; Dynamic window ordering
+DynamicOrder=1
+; Save window order between sessions
+SaveWindowOrder=1
+; Show closed windows
+ShowClosedWindows=0
+; Auto-hide overlay
+AutoHideOverlay=1
+; Show filter indicator
+ShowFilterIndicator=1
+; Enable sounds
+EnableSounds=0
 ```
 
-### Overlay Settings
-- **Size**: Defaults to 88% screen width, 80% height (configurable)
-- **Colors**: OLED black theme with customizable accent colors
-- **Transparency**: Adjustable alpha blending for background
-- **Grid Layout**: Dynamic column layout with customizable spacing
+### Performance Profiles
 
-### Input Configuration
-- **Numpad Keys**: Direct 1-9, 0 for 10th window selection
-- **Ctrl Overlay**: Customizable size and position
-- **Hotkeys**: Configurable global shortcuts in main.cpp
-- **Mouse Wheel**: Vertical and horizontal scrolling support
+#### Full Performance Mode
+- **Target**: 16GB+ RAM systems
+- **Settings**: Maximum responsiveness, high quality thumbnails, extended caching
+- **Use Case**: Gaming, development, high-performance workstations
 
-### Persistence
-- **Window Order**: Saved in `grid_order.bin`
-- **Pin States**: Preserved across sessions
-- **Settings**: Runtime configuration changes persist in INI file
+#### Full Low Resources Mode
+- **Target**: Resource-constrained systems
+- **Settings**: Battery optimization, minimal resource usage, adaptive configuration
+- **Use Case**: Laptops, older systems, battery life optimization
 
 ---
 
 ## 🧩 Technical Architecture
 
 ### Core Components
-- **Window Manager**: Handles window enumeration and state management
+- **Window Manager**: Enhanced window enumeration and state management
+- **Filtering Engine**: Real-time search and filtering system
+- **Performance Monitor**: Resource usage tracking and optimization
+- **Settings Manager**: Comprehensive configuration management
 - **Overlay System**: Layered window with custom painting
-- **Input Handler**: Dual input system for keyboard and mouse
+- **Input Handler**: Dual hotkey system for different modes
 - **Configuration System**: INI file parsing and settings management
-- **Settings Dialog**: Win32 common controls for user configuration
-- **Persistence Layer**: Binary file storage for user preferences
-- **Notification System**: Virtual desktop and system event handling
+- **Window Hook System**: System-wide event monitoring
 
 ### Key Technologies
 - **Win32 API**: Core Windows functionality
@@ -232,13 +264,15 @@ OverlayAlpha=230
 - **GDI+**: Custom drawing and UI elements
 - **Shell API**: Tray icon and system integration
 - **INI File API**: Configuration file management
+- **Windows Hooks**: System-wide event monitoring
+- **Performance Counters**: Resource usage tracking
 
 ### Performance Optimizations
-- **Double Buffering**: Flicker-free rendering
-- **Lazy Loading**: Thumbnails loaded on-demand
-- **Efficient Sorting**: Optimized window ordering algorithms
-- **Memory Management**: Proper resource cleanup and reuse
-- **Dynamic Sizing**: Runtime thumbnail size calculations
+- **Intelligent Caching**: Adaptive thumbnail cache management
+- **Resource Monitoring**: Real-time system resource analysis
+- **Dynamic Optimization**: Automatic performance parameter adjustment
+- **Memory Management**: Efficient thumbnail memory usage
+- **Cleanup Automation**: Intelligent cache cleanup scheduling
 
 ---
 
@@ -246,24 +280,24 @@ OverlayAlpha=230
 
 ### Performance
 - **Instant Response**: No lag or delay in overlay display
-- **Low Resource Usage**: Minimal CPU and memory footprint
-- **Smooth Animations**: Hardware-accelerated rendering
-- **Scalable**: Handles 50+ windows efficiently
-- **Dynamic Layout**: Automatic adaptation to different configurations
+- **Intelligent Resource Management**: Automatic optimization based on system state
+- **Adaptive Performance**: Self-adjusting parameters for optimal operation
+- **Efficient Caching**: Smart thumbnail management for better performance
+- **Battery Optimization**: Low resource mode for extended laptop usage
 
 ### User Experience
-- **Intuitive Interface**: Familiar Alt+Tab workflow with enhancements
-- **Flexible Input**: Multiple ways to select windows (keyboard, mouse, number input)
-- **Visual Feedback**: Clear indicators for all actions
-- **Accessibility**: Keyboard and mouse support
-- **Customizable**: Extensive configuration options
+- **Dual Mode Operation**: Classic Alt+Q and advanced Alt+A filtering
+- **Real-time Search**: Instant filtering as you type
+- **Persistent Filtering**: Extended search sessions without overlay closing
+- **Performance Profiles**: One-click optimization for different use cases
+- **Professional Interface**: Modern, themed settings and controls
 
 ### Developer Experience
-- **Well Documented**: Comprehensive Spanish comments
+- **Comprehensive Documentation**: Detailed code comments and explanations
 - **Modular Design**: Clean separation of concerns
-- **Extensible**: Easy to add new features
-- **Maintainable**: Clear code structure and organization
+- **Extensible Architecture**: Easy to add new features
 - **Configuration Driven**: Runtime changes without recompilation
+- **Performance Monitoring**: Built-in resource tracking and optimization
 
 ---
 
@@ -290,25 +324,30 @@ We welcome contributions! Please feel free to:
 
 ## 🔄 Version History
 
-### v3.0 (Current)
-- Added INI configuration system
-- Implemented settings dialog with tray menu integration
-- Added dynamic thumbnail sizing
-- Enhanced mouse wheel scrolling (vertical and horizontal)
-- Improved pin and number pin button functionality
-- Added comprehensive Spanish documentation
-- Enhanced input handling and visual feedback
-- Better error handling and resource management
+### v6.0 (Current)
+- **Advanced Filtering System**: Real-time search with Alt+A hotkey
+- **Dual Hotkey Modes**: Alt+Q (classic) and Alt+A (filtering)
+- **Intelligent Performance Optimization**: Full Performance and Full Low Resources modes
+- **Enhanced Settings Interface**: Dark OLED themed settings dialog with custom tabs
+- **Automatic Window Management**: Real-time thumbnail updates and cleanup
+- **Performance Monitoring**: Resource usage tracking and automatic optimization
+- **Enhanced User Experience**: Persistent filtering mode with search box
+- **Professional UI**: Modern interface design with consistent theming
 
-### v2.0
-- Added Ctrl+number input overlay
-- Persistent tray icon
-- Virtual desktop support
-- Enhanced navigation
-- OLED theme
-- Performance improvements
+### v5.0
+- **INI Configuration System**: External configuration file for all settings
+- **Settings Dialog**: User-friendly interface with tray menu integration
+- **Dynamic Thumbnail Sizing**: Automatic scaling based on column count
+- **Enhanced Mouse Support**: Wheel scrolling and hover effects
+- **Comprehensive Spanish Documentation**: Detailed code comments and explanations
 
-### v1.0
-- Basic Alt+Tab replacement
-- Window thumbnails
-- Hotkey support 
+### v4.0
+- **Advanced Number Input System**: Ctrl+number overlay for precise selection
+- **Enhanced Navigation**: Improved arrow key and mouse wheel support
+- **OLED Theme**: True black backgrounds for OLED displays
+- **Performance Improvements**: Better memory management and responsiveness
+
+### v3.0
+- **Basic Alt+Tab Replacement**: Window thumbnails and hotkey support
+- **Core Functionality**: Essential window switching capabilities
+- **Foundation**: Basic architecture and user interface 
