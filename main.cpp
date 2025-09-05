@@ -153,12 +153,83 @@ const int PIN_TO_POS_BUTTON_SIZE = 26; // Tamaño del botón para fijar a una po
 int g_fixedCols = 5;               // columnas visibles
 BYTE g_overlayAlpha = 230;         // opacidad del overlay
 
+void CreateDefaultConfiguration()
+{
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    PathRemoveFileSpecW(exePath);
+    wcscat_s(exePath, L"\\BetterAltTab.ini");
+
+    // Verificar si el archivo ya existe
+    if (GetFileAttributesW(exePath) != INVALID_FILE_ATTRIBUTES) {
+        return; // El archivo ya existe, no crear uno nuevo
+    }
+
+    // Crear configuración por defecto
+    WritePrivateProfileStringW(L"General", L"Columns", L"5", exePath);
+    WritePrivateProfileStringW(L"General", L"OverlayAlpha", L"230", exePath);
+    WritePrivateProfileStringW(L"General", L"AltAEnabled", L"1", exePath);
+    WritePrivateProfileStringW(L"General", L"DynamicOrder", L"1", exePath);
+    
+    // Configuración de rendimiento
+    WritePrivateProfileStringW(L"Performance", L"AutoCleanupInterval", L"30000", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailMemory", L"100", exePath);
+    WritePrivateProfileStringW(L"Performance", L"WindowCacheTimeout", L"5000", exePath);
+    WritePrivateProfileStringW(L"Performance", L"NormalRefreshRate", L"50", exePath);
+    WritePrivateProfileStringW(L"Performance", L"LowResourceMode", L"auto", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MaxThumbnailCache", L"50", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MinThumbnailSize", L"300", exePath);
+    WritePrivateProfileStringW(L"Performance", L"MemoryThreshold", L"2048", exePath);
+    WritePrivateProfileStringW(L"Performance", L"CPUThreshold", L"95", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReserveMemory", L"true", exePath);
+    WritePrivateProfileStringW(L"Performance", L"OptimizePriority", L"true", exePath);
+    WritePrivateProfileStringW(L"Performance", L"ReduceVisualEffects", L"false", exePath);
+    
+    // Configuración de filtros
+    WritePrivateProfileStringW(L"Filters", L"Enabled", L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByTitle", L"1", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByClassName", L"1", exePath);
+    WritePrivateProfileStringW(L"Filters", L"FilterByProcessName", L"1", exePath);
+    WritePrivateProfileStringW(L"Filters", L"CaseSensitive", L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"UseRegex", L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludeHidden", L"1", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludeMinimized", L"0", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludedProcesses", L"", exePath);
+    WritePrivateProfileStringW(L"Filters", L"ExcludedClasses", L"", exePath);
+    WritePrivateProfileStringW(L"Filters", L"IncludedProcesses", L"", exePath);
+    WritePrivateProfileStringW(L"Filters", L"IncludedClasses", L"", exePath);
+    
+    // Configuración de UI
+    WritePrivateProfileStringW(L"UI", L"ShowTrayIcon", L"1", exePath);
+    WritePrivateProfileStringW(L"UI", L"ShowSystemInfo", L"0", exePath);
+    WritePrivateProfileStringW(L"UI", L"ShowWindowCount", L"0", exePath);
+    WritePrivateProfileStringW(L"UI", L"ShowMemoryUsage", L"0", exePath);
+    WritePrivateProfileStringW(L"UI", L"ShowPerformanceMode", L"0", exePath);
+    WritePrivateProfileStringW(L"UI", L"TrayIconSize", L"32", exePath);
+    WritePrivateProfileStringW(L"UI", L"TrayIconColor", L"#FFFFFF", exePath);
+    
+    // Configuración de hotkeys
+    WritePrivateProfileStringW(L"Hotkeys", L"AltQKey", L"Q", exePath);
+    WritePrivateProfileStringW(L"Hotkeys", L"AltAKey", L"A", exePath);
+    WritePrivateProfileStringW(L"Hotkeys", L"NumpadModifier", L"VK_CONTROL", exePath);
+    
+    // Configuración avanzada
+    WritePrivateProfileStringW(L"Advanced", L"DebugMode", L"0", exePath);
+    WritePrivateProfileStringW(L"Advanced", L"EventLogging", L"0", exePath);
+    WritePrivateProfileStringW(L"Advanced", L"LogLevel", L"info", exePath);
+    WritePrivateProfileStringW(L"Advanced", L"LogToFile", L"0", exePath);
+    WritePrivateProfileStringW(L"Advanced", L"LogToConsole", L"0", exePath);
+}
+
 void LoadConfiguration()
 {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     PathRemoveFileSpecW(exePath);
     wcscat_s(exePath, L"\\BetterAltTab.ini");
+
+    // Crear configuración por defecto si no existe
+    CreateDefaultConfiguration();
 
     // Sección general
     g_fixedCols = GetPrivateProfileIntW(L"General", L"Columns", g_fixedCols, exePath);
@@ -306,6 +377,8 @@ void UnregisterThumbnails(std::vector<WindowInfo>& windows); // Borra las miniat
 void SaveGridOrder(const std::vector<WindowInfo>& windows); // Guarda el orden de las ventanas en un archivo.
 void LoadGridOrder(std::vector<PersistedWindow>& order); // Carga el orden guardado del archivo.
 void ApplyGridOrder(std::vector<WindowInfo>& windows, const std::vector<PersistedWindow>& order); // Aplica el orden guardado.
+void CreateDefaultConfiguration(); // Crea el archivo de configuración por defecto.
+void LoadConfiguration(); // Carga la configuración desde el archivo INI.
 
 // Forward declarations for filter functions
 void LoadFilterSettings(); // Carga configuración de filtros desde INI
@@ -480,10 +553,25 @@ std::vector<WindowInfo> EnumerateWindows(HWND excludeHwnd) {
 void RegisterThumbnails(HWND host, std::vector<WindowInfo>& windows) {
     for (auto& win : windows) { // Recorremos cada ventana.
         if (!win.thumbnail) { // Si no tiene miniatura todavía.
-            if (DwmRegisterThumbnail(host, win.hwnd, &win.thumbnail) == S_OK) { // Creamos la miniatura.
+            // Verificar que la ventana existe y es válida antes de registrar
+            if (!IsWindow(win.hwnd) || !IsWindowVisible(win.hwnd)) {
+                continue; // Saltar ventanas inválidas o invisibles
+            }
+            
+            // Intentar registrar con timeout implícito usando PeekMessage
+            HTHUMBNAIL tempThumbnail = nullptr;
+            HRESULT hr = DwmRegisterThumbnail(host, win.hwnd, &tempThumbnail);
+            
+            if (hr == S_OK && tempThumbnail) { // Creamos la miniatura.
+                win.thumbnail = tempThumbnail;
                 // Actualizar uso de memoria estimado
                 g_thumbnailMemoryUsage += (g_previewW * g_previewH * 4); // 4 bytes por píxel (RGBA)
                 g_thumbnailMap[win.hwnd] = win.thumbnail; // Guardar en el mapa global
+            } else {
+                // Log del error para debugging
+                wchar_t debugMsg[256];
+                wsprintfW(debugMsg, L"Failed to register thumbnail for window 0x%p, HRESULT: 0x%08X\n", win.hwnd, hr);
+                OutputDebugStringW(debugMsg);
             }
         }
     }
@@ -494,7 +582,14 @@ void RegisterThumbnails(HWND host, std::vector<WindowInfo>& windows) {
 void UnregisterThumbnails(std::vector<WindowInfo>& windows) {
     for (auto& win : windows) { // Recorremos cada ventana.
         if (win.thumbnail) { // Si tiene miniatura.
-            DwmUnregisterThumbnail(win.thumbnail); // La borramos.
+            // Verificar que la miniatura es válida antes de desregistrar
+            HRESULT hr = DwmUnregisterThumbnail(win.thumbnail);
+            if (FAILED(hr)) {
+                // Log del error para debugging
+                wchar_t debugMsg[256];
+                wsprintfW(debugMsg, L"Failed to unregister thumbnail 0x%p, HRESULT: 0x%08X\n", win.thumbnail, hr);
+                OutputDebugStringW(debugMsg);
+            }
             // Actualizar uso de memoria estimado
             g_thumbnailMemoryUsage -= (g_previewW * g_previewH * 4); // 4 bytes por píxel (RGBA)
             win.thumbnail = nullptr; // La marcamos como que no existe.
@@ -1345,19 +1440,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                     
                     // Iniciamos timer para verificar teclas del numpad.
-                    SetTimer(hwnd, 200, 50, NULL); // Timer cada 50ms para teclas del numpad.
+                    SetTimer(hwnd, 200, 100, NULL); // Timer cada 100ms para teclas del numpad (reducido de 50ms)
                     
-                    // Iniciamos timer para verificar ventanas cerradas
-                    SetTimer(hwnd, 300, 500, NULL); // Timer cada 500ms para verificar ventanas cerradas
-                    
-                    // Timer adicional más frecuente para verificar ventanas cerradas
-                    SetTimer(hwnd, 400, 200, NULL); // Timer cada 200ms para verificación rápida
+                    // Timer único para verificar ventanas cerradas (consolidado)
+                    SetTimer(hwnd, 300, 1000, NULL); // Timer cada 1000ms para verificar ventanas cerradas (reducido de múltiples timers)
                     
                     ShowWindow(hwnd, SW_SHOW); // Mostramos la superposición.
                     SetForegroundWindow(hwnd); // La ponemos al frente.
                     SetFocus(hwnd); // Aseguramos que el overlay reciba las teclas.
-                    // Agregamos un pequeño delay para asegurar que el foco tome efecto.
-                    Sleep(10); // Esperamos 10 milisegundos.
+                    // Removido Sleep(10) que bloqueaba el thread principal
+                    // En su lugar, usar PostMessage para procesar el foco de forma asíncrona
+                    PostMessage(hwnd, WM_USER + 1, 0, 0); // Mensaje personalizado para procesar foco
                 }
                 return 0; // No procesamos más.
             }
@@ -2527,7 +2620,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ShowWindow(hwnd, SW_HIDE);
                 KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
                 KillTimer(hwnd, 200); // Limpiar timer de numpad keys
-                KillTimer(hwnd, 400); // Limpiar timer de verificación rápida
+                KillTimer(hwnd, 300); // Limpiar timer de verificación de ventanas
                 return 0;
             }
             break;
@@ -2546,12 +2639,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             ShowWindow(hwnd, SW_HIDE);
             KillTimer(hwnd, 100); // Limpiar timer de Alt+Q
             KillTimer(hwnd, 200); // Limpiar timer de numpad keys
-            KillTimer(hwnd, 400); // Limpiar timer de verificación rápida
+            KillTimer(hwnd, 300); // Limpiar timer de verificación de ventanas
             return 0;
         case WM_VIRTUAL_DESKTOP_CHANGED:
             // Recargar la lista de ventanas y la UI, pero NO recargar los datos persistentes
             InvalidateGrid(hwnd);
             break;
+            
+        case WM_USER + 1: // Mensaje personalizado para procesar foco de forma asíncrona
+            // Procesar el foco sin bloquear el thread principal
+            SetFocus(hwnd);
+            return 0;
             
         case WM_TIMER:
             // Limpieza automática de rendimiento

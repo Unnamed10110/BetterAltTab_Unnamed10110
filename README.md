@@ -1,6 +1,6 @@
-# BetterAltTab_Unnamed10110 v6
+# BetterAltTab
 
-A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. **Version 6** introduces advanced filtering system, dual hotkey modes, intelligent performance optimization, comprehensive settings management, and enhanced user experience features.
+A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, written in C++ with pure Win32 API. Features advanced filtering system, dual hotkey modes, intelligent performance optimization, comprehensive settings management, and enhanced user experience.
 
 ---
 
@@ -133,22 +133,31 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 - Visual Studio 2019/2022 or MSVC toolchain
 - CMake 3.10+
 
-### Build Steps
-1. **Clone Repository**:
-   ```sh
-   git clone <your-repo-url>
-   cd BetterAltTab_Unnamed10110
-   ```
+### Quick Build
+Simply run the provided build script:
+```bash
+.\build.bat
+```
 
-2. **Configure and Build**:
+This will:
+- Compile the executable directly in the project root
+- Generate `BetterAltTab.exe` without additional files
+- Automatically create `BetterAltTab.ini` configuration file on first run
+
+### Manual Build Steps
+1. **Configure CMake**:
    ```sh
    cmake -S . -B build
+   ```
+
+2. **Build**:
+   ```sh
    cmake --build build --config Release
    ```
 
 3. **Run Application**:
    ```sh
-   build/Release/BetterAltTab_Unnamed10110_Optimized.exe
+   BetterAltTab.exe
    ```
 
 ### Auto-Start Setup
@@ -158,8 +167,8 @@ The application automatically registers itself to run as administrator on login 
 
 ## ⚙️ Configuration
 
-### INI File Configuration
-The application uses `BetterAltTab.ini` for all configuration settings:
+### Automatic Configuration
+The application automatically creates `BetterAltTab.ini` with default settings on first run. All settings are configurable through the INI file:
 
 ```ini
 [General]
@@ -322,32 +331,22 @@ We welcome contributions! Please feel free to:
 
 ---
 
-## 🔄 Version History
+## 🔄 Recent Updates
 
-### v6.0 (Current)
-- **Advanced Filtering System**: Real-time search with Alt+A hotkey
-- **Dual Hotkey Modes**: Alt+Q (classic) and Alt+A (filtering)
-- **Intelligent Performance Optimization**: Full Performance and Full Low Resources modes
-- **Enhanced Settings Interface**: Dark OLED themed settings dialog with custom tabs
-- **Automatic Window Management**: Real-time thumbnail updates and cleanup
-- **Performance Monitoring**: Resource usage tracking and automatic optimization
-- **Enhanced User Experience**: Persistent filtering mode with search box
-- **Professional UI**: Modern interface design with consistent theming
+### Performance & Stability Improvements
+- **Fixed Freeze Issues**: Eliminated program hanging/freezing problems
+- **Optimized Timers**: Reduced timer frequency to improve responsiveness
+- **Enhanced DWM Handling**: Better error handling for thumbnail registration
+- **Asynchronous Focus**: Removed blocking Sleep() calls from main thread
+- **Memory Management**: Improved thumbnail cache cleanup and validation
 
-### v5.0
-- **INI Configuration System**: External configuration file for all settings
-- **Settings Dialog**: User-friendly interface with tray menu integration
-- **Dynamic Thumbnail Sizing**: Automatic scaling based on column count
-- **Enhanced Mouse Support**: Wheel scrolling and hover effects
-- **Comprehensive Spanish Documentation**: Detailed code comments and explanations
+### Build System Improvements
+- **Direct Compilation**: Executable generated directly in project root
+- **Clean Build Process**: No temporary files or directories created
+- **Automatic INI Creation**: Configuration file created automatically on first run
+- **Simplified Scripts**: Easy-to-use build scripts for different scenarios
 
-### v4.0
-- **Advanced Number Input System**: Ctrl+number overlay for precise selection
-- **Enhanced Navigation**: Improved arrow key and mouse wheel support
-- **OLED Theme**: True black backgrounds for OLED displays
-- **Performance Improvements**: Better memory management and responsiveness
-
-### v3.0
-- **Basic Alt+Tab Replacement**: Window thumbnails and hotkey support
-- **Core Functionality**: Essential window switching capabilities
-- **Foundation**: Basic architecture and user interface 
+### Configuration Enhancements
+- **Default Settings**: Comprehensive default configuration for all features
+- **Automatic Setup**: No manual configuration required for basic usage
+- **INI Integration**: All settings managed through external configuration file 
