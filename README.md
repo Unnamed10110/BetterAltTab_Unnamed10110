@@ -57,6 +57,8 @@ A modern, ultra-fast, and highly customizable Alt+Tab replacement for Windows, w
 
 ## 🎮 How to Use
 
+![Demo](https://github.com/Unnamed10110/BetterAltTab_Unnamed10110/blob/master/eg.gif)
+
 ### Classic Mode (Alt+Q)
 - **Open Overlay**: Press `Alt+Q` to open the classic window switcher
 - **Navigate**: While holding Alt, use arrow keys to move selection
